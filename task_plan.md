@@ -1,34 +1,39 @@
-# Task Plan: 个人知识关系系统规划与工程初始化
+# Task Plan: M0/M1 领域模型与权威存储基线
 
 ## Goal
-基于 PRD 与 P0 开发计划，形成可执行的开发规划，并初始化一个可运行、可测试、可持续扩展的项目工程。
+将 PRD 中的核心 Ontology、关系约束和 PostgreSQL 表边界落地为可执行、可迁移、可测试的后端基础，为来源录入与人工审核发布闭环提供稳定底座。
 
 ## Phases
-- [x] Phase 1: 盘点输入文件与仓库状态，建立工作记录
-- [x] Phase 2: 提取 PRD 与开发计划中的需求、范围、里程碑和约束
-- [x] Phase 3: 输出工程化开发规划与关键技术决策
-- [x] Phase 4: 初始化项目结构、配置与最小可运行骨架
-- [x] Phase 5: 执行安装/构建/测试验证并完成交付
+- [x] Phase 1: 复核 PRD、开发计划和现有工程边界
+- [x] Phase 2: 实现对象类型、状态、认识类型与受控关系策略
+- [x] Phase 3: 实现 SQLAlchemy 核心模型与首个 Alembic 迁移
+- [x] Phase 4: 补齐 Ontology/关系字典和领域/元数据测试
+- [x] Phase 5: 执行 Ruff、Mypy、Pytest、迁移离线 SQL 验证并交付
 
-## Key Questions
-1. P0 的产品边界、核心用户流程和验收标准是什么？
-2. PRD 是否指定了技术栈、数据模型、AI 能力和部署约束？
-3. 开发计划中的优先级与依赖关系如何映射到工程模块？
-4. 当前环境能否直接完成依赖安装与运行验证？
+## Delivered Scope
+- knowledge_object、knowledge_relation
+- source_document、evidence、evidence_link
+- claim、claim_basis、decision、decision_basis
+- candidate、object_version、audit_log
+- processing_job、graph_projection_event、graph_projection_checkpoint
+- 对象端点约束、关键关系证据门禁、derived_from/based_on 无环校验基础
+- PostgreSQL 首个可离线执行的 Alembic 迁移
+- Ontology/关系字典及领域/数据库元数据契约测试
+
+## Non-Goals
+- 本增量不实现完整 CRUD、发布事务、Worker 任务领取、Neo4j 写入和 Web 业务页面。
+- 不引入 Redis、消息队列、向量数据库或额外服务。
+- 不把尚未评审的 AI 抽取流程写入正式知识路径。
 
 ## Decisions Made
-- 以 PRD 为产品事实来源，以 P0 开发计划表为范围与排期事实来源。
-- 初始化内容以“最小可运行 + 便于后续迭代”为目标，不提前实现未要求的完整业务功能。
-- 采用 `apps/web + apps/api + packages/contracts + infra` 的单仓结构，后端保持模块化单体。
-- PostgreSQL 是唯一权威写入源；Neo4j 仅作为可关闭、可重建的异步查询投影。
-- 第一阶段只初始化健康检查、配置、测试入口和领域模块边界，不提前实现 P0 业务表。
-- 工程默认使用 Python 3.12、FastAPI、SQLAlchemy、Alembic、React、TypeScript、Vite、Ant Design、React Flow。
+- 使用 PostgreSQL UUID、JSONB 和显式索引；高频查询字段关系化，扩展属性保留在 JSONB。
+- 数据库枚举使用字符串约束而非 PostgreSQL 原生 ENUM，降低 P0 频繁演进时的迁移成本。
+- knowledge_relation 仅表达 Knowledge Object 之间的受控语义关系；Evidence/Claim/Decision 依赖使用独立关联表。
+- 所有正式记录采用状态/版本/审计，不以物理删除作为业务操作。
+- PostgreSQL 仍是唯一权威源；图投影表只记录派生任务与检查点。
 
 ## Errors Encountered
-- 当前目录不是 Git 仓库：已在工程初始化阶段执行 `git init`。
-- Initial environment lacked Python/Node/Docker; uv later installed isolated Python 3.12 and backend verification passed. Node and Docker remain unavailable, so frontend build and Compose startup require those runtimes.
-- 工作区依赖加载器未暴露：开发计划表以只读 OOXML 方式解析，未修改原工作簿。
-- 内置 `apply_patch` 连续触发 Windows 沙箱刷新错误，沙箱外同程序也被拒绝；改用 `git apply` 继续补丁式编辑。
+- 内置 apply_patch 在该 Windows 工作区持续触发沙箱刷新错误；使用受控 UTF-8 写入回退，并通过完整自动化检查防止文件损坏。
 
 ## Status
-**Completed** - Planning, initialization, dependency locking, and automated backend verification are complete.
+**Completed** - M0/M1 领域模型与权威存储基线已落地并通过质量门禁。
