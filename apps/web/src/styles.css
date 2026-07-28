@@ -1,0 +1,123 @@
+:root {
+  color: #17221f;
+  background: #f2f4ef;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 4%, rgba(90, 158, 135, 0.16), transparent 32rem),
+    #f2f4ef;
+}
+
+.app-shell {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 72px 0 96px;
+}
+
+.hero {
+  padding: 48px;
+  color: #f7fbf7;
+  background: linear-gradient(135deg, #123e36 0%, #176b5b 62%, #2f816f 100%);
+  border-radius: 24px;
+  box-shadow: 0 24px 70px rgba(26, 69, 60, 0.18);
+}
+
+.hero h1.ant-typography {
+  max-width: 720px;
+  margin: 14px 0 18px;
+  color: inherit;
+  font-size: clamp(2.25rem, 5vw, 4.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+}
+
+.eyebrow {
+  color: #b9decf;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.hero-copy.ant-typography {
+  max-width: 680px;
+  margin-bottom: 0;
+  color: #d8e9e2;
+  font-size: 1.05rem;
+  line-height: 1.8;
+}
+
+.status-card {
+  min-width: 190px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: none;
+}
+
+.content-section {
+  padding-top: 52px;
+}
+
+.content-section h2.ant-typography {
+  margin: 0 0 24px;
+  font-size: 1.8rem;
+}
+
+.stage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.stage-card {
+  min-height: 230px;
+  border: 1px solid rgba(25, 77, 65, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.stage-card h3.ant-typography {
+  margin: 8px 0 0;
+}
+
+.stage-card p.ant-typography {
+  margin: 0;
+  color: #5c6d67;
+  line-height: 1.7;
+}
+
+.stage-number {
+  color: #176b5b;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .stage-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .app-shell {
+    width: min(100% - 24px, 1180px);
+    padding-top: 24px;
+  }
+
+  .hero {
+    padding: 30px 24px;
+  }
+
+  .stage-grid {
+    grid-template-columns: 1fr;
+  }
+}

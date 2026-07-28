@@ -1,0 +1,103 @@
+
+name: person-knowledge-system
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-knowledge}
+      POSTGRES_USER: ${POSTGRES_USER:-knowledge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:2026.06.0
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/local-only-change-me}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", 'cypher-shell -u neo4j -p "$${NEO4J_AUTH#*/}" "RETURN 1;" || exit 1']
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  api:
+    build:
+      context: ./apps/api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PKS_DATABASE_URL: ${PKS_DATABASE_URL:-postgresql+psycopg://knowledge:local-only-change-me@postgres:5432/knowledge}
+      PKS_NEO4J_URI: ${PKS_NEO4J_URI:-bolt://neo4j:7687}
+      PKS_NEO4J_USERNAME: ${PKS_NEO4J_USERNAME:-neo4j}
+      PKS_NEO4J_PASSWORD: ${PKS_NEO4J_PASSWORD:-local-only-change-me}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api:/workspace
+      - source-data:/data/sources
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_started
+
+  worker:
+    build:
+      context: ./apps/api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PKS_DATABASE_URL: ${PKS_DATABASE_URL:-postgresql+psycopg://knowledge:local-only-change-me@postgres:5432/knowledge}
+      PKS_NEO4J_URI: ${PKS_NEO4J_URI:-bolt://neo4j:7687}
+      PKS_NEO4J_USERNAME: ${PKS_NEO4J_USERNAME:-neo4j}
+      PKS_NEO4J_PASSWORD: ${PKS_NEO4J_PASSWORD:-local-only-change-me}
+    command: python -m app.worker
+    volumes:
+      - ./apps/api:/workspace
+      - source-data:/data/sources
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_started
+
+  web:
+    build:
+      context: ./apps/web
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/v1
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/web:/workspace
+      - web-node-modules:/workspace/node_modules
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  neo4j-data:
+  neo4j-logs:
+  source-data:
+  web-node-modules:
+
+

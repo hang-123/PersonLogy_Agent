@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.person-knowledge.dev/schemas/context-pack.v1.json",
+  "title": "Context Pack v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "subject",
+    "purpose",
+    "facts",
+    "source_assertions",
+    "inferences",
+    "personal_preferences",
+    "decisions",
+    "missing_information",
+    "truncation"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "subject": { "$ref": "#/$defs/reference" },
+    "purpose": { "type": "string", "minLength": 1 },
+    "facts": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "source_assertions": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "inferences": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "personal_preferences": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "missing_information": { "type": "array", "items": { "type": "string" } },
+    "truncation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truncated"],
+      "properties": {
+        "truncated": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "name"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "type": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "excerpt", "source_id", "captured_at", "visibility"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "excerpt": { "type": "string" },
+        "source_id": { "type": "string", "format": "uuid" },
+        "locator": { "type": ["string", "null"] },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "visibility": { "enum": ["public", "private", "sensitive"] }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "content", "status", "freshness", "evidence"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "kind": { "enum": ["relation", "claim", "decision", "preference"] },
+        "content": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "freshness": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } }
+      }
+    }
+  }
+}
