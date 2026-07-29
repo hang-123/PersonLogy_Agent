@@ -298,6 +298,41 @@ PKS_LLM_MAX_RETRIES=2
 5. 请求内容需要执行敏感信息裁剪，默认不发送 Sensitive 原文。
 6. 模型调用失败不得影响原始来源材料保存。
 
+### 4.8 来源与候选审核接口
+
+当前后端已实现来源、Evidence、Candidate 和对象/关系审核发布闭环：
+
+- `POST /v1/sources`
+- `POST /v1/sources/{source_id}/evidence`
+- `POST /v1/candidates`
+- `GET /v1/candidates`
+- `POST /v1/candidates/{candidate_id}/accept`
+- `POST /v1/candidates/{candidate_id}/reject`
+
+发布对象或关系时，正式数据、版本快照、审计记录和图投影事件在同一
+PostgreSQL 事务内提交。具体 Payload 和验证规则见
+[来源与候选发布闭环](./docs/implementation/ingestion-review-workflow.md)。
+
+
+### 4.9 Web 人工审核工作台
+
+启动 PostgreSQL、API 和 Web：
+
+```bash
+docker compose up -d postgres api web
+```
+
+访问 `http://localhost:5173/`，可执行：
+
+- 来源材料录入与历史查看；
+- Evidence 摘录和定位；
+- Object/Relation Candidate 创建；
+- Candidate 发布、拒绝；
+- Object Candidate 检索已有对象并合并为 alias。
+
+Neo4j 在当前工作台阶段仍是可选服务。正式发布和合并会写入
+`graph_projection_event`，由后续投影 Worker 消费。
+
 ## 5. 服务入口
 
 | 服务 | 地址 |
@@ -349,16 +384,17 @@ npm run build
 - React、TypeScript、Vite 和 Ant Design 前端骨架；
 - Docker Compose、PostgreSQL 扩展和 Neo4j 约束基线；
 - Python 依赖锁、CI、Context Pack Schema 和架构文档；
-- 后端 Ruff、Mypy、Pytest 与静态配置验证。
+- 后端 Ruff、Mypy、Pytest 与静态配置验证；
+- Ontology、15 张权威存储表与 Alembic 迁移；
+- 来源、Evidence、Candidate 与对象/关系审核发布事务闭环；
+- Candidate alias 合并、正式对象检索与 Web 人工审核工作台。
 
 后续优先事项：
 
-1. 冻结 Ontology 数据字典和关系字典；
-2. 建立 PostgreSQL 核心 Schema 与首个 Alembic 迁移；
-3. 实现来源、Evidence、Candidate、审核和发布事务；
-4. 实现 Claim、Decision、反向追溯和影响分析；
-5. 实现 Neo4j 投影、校验、重建与 Topology 对照实验；
-6. 实现 Context Pack、只读 REST 和可插拔 LLM Provider Adapter。
+1. 实现 Candidate 关联已有对象、别名合并与审核工作台；
+2. 实现 Claim、Decision、反向追溯和影响分析；
+3. 实现 Neo4j 投影、校验、重建与 Topology 对照实验；
+4. 实现 Context Pack、只读 REST 和可插拔 LLM Provider Adapter。
 
 更多信息：
 

@@ -1,94 +1,127 @@
 import { useEffect, useState } from "react";
-import { Badge, Card, Flex, Tag, Typography } from "antd";
+import { Badge, Button, Tag, Typography } from "antd";
 
-const { Paragraph, Text, Title } = Typography;
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/v1";
+import { api } from "./api";
+import { CandidateDesk } from "./components/CandidateDesk";
+import { SourceDesk } from "./components/SourceDesk";
+import type { ApiState } from "./types";
 
-type ApiState = "checking" | "online" | "offline";
-
-interface HealthResponse {
-  status: "ok";
-  version: string;
-}
-
-const stages = [
-  { title: "来源与证据", detail: "保留原文、定位与内容指纹", status: "M2" },
-  { title: "审核与发布", detail: "Candidate 经人工确认后进入正式知识", status: "M2" },
-  { title: "关系与追溯", detail: "从 Decision 回到 Claim、Evidence 与来源", status: "M3" },
-  { title: "Topology 投影", detail: "Published 知识异步投影并可完整重建", status: "M4" },
-];
+const { Text, Title } = Typography;
+type WorkspaceView = "review" | "source";
 
 export function App() {
+  const [view, setView] = useState<WorkspaceView>("review");
   const [apiState, setApiState] = useState<ApiState>("checking");
   const [apiVersion, setApiVersion] = useState("-");
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
-
-    async function checkApi() {
-      try {
-        const response = await fetch(`${apiBaseUrl}/health/live`, { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`Health check failed: ${response.status}`);
+    api
+      .health()
+      .then((health) => {
+        if (!controller.signal.aborted) {
+          setApiVersion(health.version);
+          setApiState("online");
         }
-        const health = (await response.json()) as HealthResponse;
-        setApiVersion(health.version);
-        setApiState("online");
-      } catch (error: unknown) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-        setApiState("offline");
-      }
-    }
-
-    void checkApi();
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setApiState("offline");
+      });
     return () => controller.abort();
   }, []);
 
-  const badgeStatus = apiState === "online" ? "success" : apiState === "offline" ? "error" : "processing";
+  const badgeStatus =
+    apiState === "online" ? "success" : apiState === "offline" ? "error" : "processing";
 
   return (
-    <main className="app-shell">
-      <section className="hero">
-        <Flex align="center" justify="space-between" gap={16} wrap>
+    <div className="workbench-shell">
+      <aside className="app-sidebar">
+        <div className="brand-block">
+          <span className="brand-mark">知</span>
           <div>
-            <Text className="eyebrow">PERSONAL KNOWLEDGE TOPOLOGY · P0</Text>
-            <Title level={1}>让每个判断，都能回到它的证据。</Title>
-            <Paragraph className="hero-copy">
-              面向求职域的个人知识关系系统。PostgreSQL 保存唯一权威事实，Neo4j 提供可重建的关系拓扑投影。
-            </Paragraph>
+            <strong>PERSON LOGY</strong>
+            <small>Evidence before inference</small>
           </div>
-          <Card className="status-card" bordered={false}>
-            <Flex vertical gap={8}>
-              <Text type="secondary">工程基线</Text>
-              <Badge status={badgeStatus} text={`API ${apiState}`} />
-              <Text code>v{apiVersion}</Text>
-            </Flex>
-          </Card>
-        </Flex>
-      </section>
-
-      <section aria-labelledby="knowledge-chain-title" className="content-section">
-        <Flex align="center" justify="space-between" gap={12} wrap>
-          <Title id="knowledge-chain-title" level={2}>P0 知识闭环</Title>
-          <Tag color="green">M0 → M5 · 2026-07-28 至 2026-08-31</Tag>
-        </Flex>
-        <div className="stage-grid">
-          {stages.map((stage, index) => (
-            <Card key={stage.title} className="stage-card">
-              <Flex vertical gap={14}>
-                <Flex align="center" justify="space-between">
-                  <span className="stage-number">{String(index + 1).padStart(2, "0")}</span>
-                  <Tag bordered={false}>{stage.status}</Tag>
-                </Flex>
-                <Title level={3}>{stage.title}</Title>
-                <Paragraph>{stage.detail}</Paragraph>
-              </Flex>
-            </Card>
-          ))}
         </div>
-      </section>
-    </main>
+
+        <nav className="primary-nav" aria-label="主导航">
+          <button
+            type="button"
+            className={view === "review" ? "is-active" : ""}
+            onClick={() => setView("review")}
+          >
+            <span>01</span>
+            候选审核
+          </button>
+          <button
+            type="button"
+            className={view === "source" ? "is-active" : ""}
+            onClick={() => setView("source")}
+          >
+            <span>02</span>
+            来源录入
+          </button>
+          <button type="button" disabled>
+            <span>03</span>
+            Claim / Decision
+            <em>next</em>
+          </button>
+          <button type="button" disabled>
+            <span>04</span>
+            Neo4j 投影
+            <em>later</em>
+          </button>
+        </nav>
+
+        <div className="chain-map" aria-label="当前知识链路">
+          <Text>知识链路</Text>
+          <ol>
+            <li className="is-done">Source</li>
+            <li className="is-done">Evidence</li>
+            <li className="is-current">Candidate</li>
+            <li>Published</li>
+            <li>Topology</li>
+          </ol>
+        </div>
+
+        <div className="sidebar-status">
+          <Badge status={badgeStatus} text={"API " + apiState} />
+          <Text code>v{apiVersion}</Text>
+          <small>PostgreSQL authority</small>
+        </div>
+      </aside>
+
+      <main className="app-main">
+        <header className="topbar">
+          <div>
+            <Text className="dateline">P0 · 求职知识域 · 2026 / 07 / 28</Text>
+            <Title level={1}>证据档案与审核工作台</Title>
+          </div>
+          <div className="topbar-actions">
+            <Tag color="green">PostgreSQL · authoritative</Tag>
+            <Tag>Neo4j · projection pending</Tag>
+            <Button onClick={() => setRefreshToken((value) => value + 1)}>刷新数据</Button>
+          </div>
+        </header>
+
+        <div className="editorial-rule">
+          <span>所有正式结论都必须能回到原始材料</span>
+          <i />
+        </div>
+
+        {view === "review" ? (
+          <CandidateDesk
+            refreshToken={refreshToken}
+            onMutation={() => setRefreshToken((value) => value + 1)}
+          />
+        ) : (
+          <SourceDesk
+            refreshToken={refreshToken}
+            onMutation={() => setRefreshToken((value) => value + 1)}
+          />
+        )}
+      </main>
+    </div>
   );
 }

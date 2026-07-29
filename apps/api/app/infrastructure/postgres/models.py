@@ -66,6 +66,9 @@ class KnowledgeObject(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "knowledge_object"
     __table_args__ = (
         sa.CheckConstraint("version >= 1", name="version_positive"),
+        sa.UniqueConstraint(
+            "object_type", "canonical_name", name="uq_knowledge_object_canonical"
+        ),
         sa.Index("ix_knowledge_object_type_status", "object_type", "status"),
         sa.Index(
             "ix_knowledge_object_canonical_name_trgm",
@@ -109,6 +112,12 @@ class KnowledgeRelation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         sa.CheckConstraint("version >= 1", name="version_positive"),
         sa.CheckConstraint("source_object_id <> target_object_id", name="different_endpoints"),
+        sa.UniqueConstraint(
+            "source_object_id",
+            "relation_type",
+            "target_object_id",
+            name="uq_knowledge_relation_semantics",
+        ),
         sa.Index("ix_knowledge_relation_source_type", "source_object_id", "relation_type"),
         sa.Index("ix_knowledge_relation_target_type", "target_object_id", "relation_type"),
         sa.Index("ix_knowledge_relation_status", "status"),
@@ -151,8 +160,10 @@ class SourceDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         sa.CheckConstraint("version >= 1", name="version_positive"),
         sa.CheckConstraint("content_size >= 0", name="content_size_nonnegative"),
+        sa.UniqueConstraint(
+            "content_fingerprint", name="uq_source_document_fingerprint"
+        ),
         sa.Index("ix_source_document_status_captured", "status", "captured_at"),
-        sa.Index("ix_source_document_fingerprint", "content_fingerprint"),
     )
 
     title: Mapped[str] = mapped_column(sa.String(500), nullable=False)

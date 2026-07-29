@@ -1,39 +1,47 @@
-# Task Plan: M0/M1 领域模型与权威存储基线
+# Task Plan: Candidate 合并与人工审核工作台
 
 ## Goal
-将 PRD 中的核心 Ontology、关系约束和 PostgreSQL 表边界落地为可执行、可迁移、可测试的后端基础，为来源录入与人工审核发布闭环提供稳定底座。
+实现 Candidate 关联已有对象/别名合并命令，并交付可实际操作来源录入、证据创建、候选筛选和审核发布的 Web 工作台，为后续 Neo4j 投影提供稳定 Published 数据入口。
 
 ## Phases
-- [x] Phase 1: 复核 PRD、开发计划和现有工程边界
-- [x] Phase 2: 实现对象类型、状态、认识类型与受控关系策略
-- [x] Phase 3: 实现 SQLAlchemy 核心模型与首个 Alembic 迁移
-- [x] Phase 4: 补齐 Ontology/关系字典和领域/元数据测试
-- [x] Phase 5: 执行 Ruff、Mypy、Pytest、迁移离线 SQL 验证并交付
+- [x] Phase 1: 复核前端工程、API 契约与 PRD 审核交互
+- [x] Phase 2: 实现后端对象合并命令、对象检索与测试
+- [x] Phase 3: 实现前端 API Client、类型模型与页面信息架构
+- [x] Phase 4: 实现来源录入、Evidence 创建、Candidate 审核交互
+- [x] Phase 5: 执行后端/前端测试、浏览器验收与文档交付
 
-## Delivered Scope
-- knowledge_object、knowledge_relation
-- source_document、evidence、evidence_link
-- claim、claim_basis、decision、decision_basis
-- candidate、object_version、audit_log
-- processing_job、graph_projection_event、graph_projection_checkpoint
-- 对象端点约束、关键关系证据门禁、derived_from/based_on 无环校验基础
-- PostgreSQL 首个可离线执行的 Alembic 迁移
-- Ontology/关系字典及领域/数据库元数据契约测试
+## Key Questions
+1. 如何在不删除历史引用的前提下，把 Object Candidate 合并为已有对象别名？
+2. 审核工作台如何同时呈现来源上下文、候选 Payload、证据门禁和审核动作？
+3. 如何让 PostgreSQL/API 可用而 Neo4j 未启动时，工作台仍能完整运行？
+
+## Scope
+- 按类型、规范名和别名检索正式对象
+- Object Candidate 合并为已有对象，追加别名、版本、审计和投影事件
+- React 来源录入、Evidence 创建、Candidate 列表和审核详情
+- 接受、拒绝、合并操作及错误/加载/空状态
+- 响应式布局、无障碍基础与真实 API 联调
 
 ## Non-Goals
-- 本增量不实现完整 CRUD、发布事务、Worker 任务领取、Neo4j 写入和 Web 业务页面。
-- 不引入 Redis、消息队列、向量数据库或额外服务。
-- 不把尚未评审的 AI 抽取流程写入正式知识路径。
+- 本增量不消费图投影事件，不写 Neo4j。
+- 不实现 Claim/Decision、AI 抽取、文件上传或复杂图可视化。
+- 不引入新的前端状态管理框架。
+
+## Design Direction
+- 采用“研究档案台 / editorial intelligence desk”视觉方向：纸张暖灰底、墨色正文、朱砂操作色和结构化证据标签。
+- 强调来源—证据—候选—发布的纵向工作流，而非通用 SaaS 卡片堆叠。
+- 使用现有 Ant Design 组件承载可访问交互，自定义布局、排版和状态语言。
 
 ## Decisions Made
-- 使用 PostgreSQL UUID、JSONB 和显式索引；高频查询字段关系化，扩展属性保留在 JSONB。
-- 数据库枚举使用字符串约束而非 PostgreSQL 原生 ENUM，降低 P0 频繁演进时的迁移成本。
-- knowledge_relation 仅表达 Knowledge Object 之间的受控语义关系；Evidence/Claim/Decision 依赖使用独立关联表。
-- 所有正式记录采用状态/版本/审计，不以物理删除作为业务操作。
-- PostgreSQL 仍是唯一权威源；图投影表只记录派生任务与检查点。
+- Neo4j 继续保持可选；API 仅依赖 PostgreSQL。
+- 合并只适用于 Object Candidate，目标对象类型必须一致。
+- 合并通过追加 aliases、版本和审计实现，不创建第二个正式对象。
+- 前端使用原生 fetch 与 React hooks，避免为 P0 引入额外状态库。
 
 ## Errors Encountered
-- 内置 apply_patch 在该 Windows 工作区持续触发沙箱刷新错误；使用受控 UTF-8 写入回退，并通过完整自动化检查防止文件损坏。
+- apply_patch 在 Windows 工作区存在已知 helper_unknown_error；使用受控 UTF-8 写入并执行完整验证。
+- Web 镜像首次 npm install 在 WSL 中耗时约 5 分钟；构建最终成功，后续检查复用缓存镜像。
+- 当前 Docker Compose 版本不支持 run --no-build；移除该参数后使用缓存镜像完成类型检查。
 
 ## Status
-**Completed** - M0/M1 领域模型与权威存储基线已落地并通过质量门禁。
+**Completed** - Candidate 合并与人工审核工作台已实现并通过前后端、数据库和浏览器验收。

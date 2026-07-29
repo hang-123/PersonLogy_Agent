@@ -63,3 +63,18 @@ def test_projection_event_has_idempotency_constraint() -> None:
         if isinstance(constraint, sa.UniqueConstraint)
     }
     assert "uq_graph_projection_event_idempotency" in unique_names
+
+
+def test_canonical_deduplication_constraints_are_registered() -> None:
+    expected = {
+        "knowledge_object": "uq_knowledge_object_canonical",
+        "knowledge_relation": "uq_knowledge_relation_semantics",
+        "source_document": "uq_source_document_fingerprint",
+    }
+    for table_name, constraint_name in expected.items():
+        unique_names = {
+            constraint.name
+            for constraint in Base.metadata.tables[table_name].constraints
+            if isinstance(constraint, sa.UniqueConstraint)
+        }
+        assert constraint_name in unique_names

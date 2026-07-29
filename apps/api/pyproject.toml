@@ -33,6 +33,9 @@ include = ["app*"]
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --disable-warnings"
 testpaths = ["tests"]
+markers = [
+  "integration: requires a migrated PostgreSQL test database",
+]
 
 [tool.ruff]
 target-version = "py312"

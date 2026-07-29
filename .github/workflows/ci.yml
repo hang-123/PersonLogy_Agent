@@ -8,6 +8,23 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: knowledge_test
+          POSTGRES_USER: knowledge
+          POSTGRES_PASSWORD: integration-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U knowledge -d knowledge_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PKS_DATABASE_URL: postgresql+psycopg://knowledge:integration-test-only@localhost:5432/knowledge_test
+      PKS_TEST_DATABASE_URL: postgresql+psycopg://knowledge:integration-test-only@localhost:5432/knowledge_test
     defaults:
       run:
         working-directory: apps/api
@@ -17,6 +34,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
+      - run: alembic upgrade head
       - run: ruff check app tests migrations
       - run: mypy app
       - run: pytest --cov=app --cov-report=term-missing

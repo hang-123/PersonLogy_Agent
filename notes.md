@@ -48,3 +48,34 @@
 - 建立 15 张 PostgreSQL 权威存储表，覆盖正式知识、来源证据、候选审核、版本审计、后台任务和图投影。
 - 首个 Alembic 迁移支持离线 SQL 审阅，启用 pg_trgm 并保留共享扩展的安全降级策略。
 - 元数据契约测试验证表集合、关系外键、枚举存储值、JSONB 与投影幂等唯一约束。
+
+## 来源—审核发布闭环设计结论（2026-07-28）
+- AC-01/03 要求来源保留正文、URL、采集时间、指纹，Evidence 保留摘录、来源和定位。
+- Candidate 创建时允许保留尚未规范化的原始 payload；只有人工接受时才按正式 Object/Relation Schema 严格校验。
+- 关系发布必须验证起终点对象类型、Evidence 存在且有效，并为正式 Relation 建立 supports EvidenceLink。
+- 接受命令在一个 PostgreSQL 事务内锁定 Candidate，并同时写正式聚合、版本快照、审计和图投影事件。
+- Candidate 仅允许从 pending_review 进入 accepted/rejected，重复命令返回冲突，防止重复发布。
+- 本增量先覆盖新建对象/关系与拒绝；关联已有对象及别名合并在后续审核增强中实现。
+
+## 来源—审核发布闭环落地结果（2026-07-28）
+- 新增 9 个 REST 命令/查询端点，覆盖来源、Evidence、Candidate 列表、接受与拒绝。
+- 发布命令通过 FOR UPDATE 锁定 Candidate，并原子写正式聚合、EvidenceLink、ObjectVersion、AuditLog 与 GraphProjectionEvent。
+- 新增 0002 迁移，对对象规范名、关系三元组和来源内容指纹增加唯一约束；开发库和 knowledge_test 均已升级到 20260728_0002。
+- 真实 PostgreSQL 集成测试覆盖成功发布、缺 Evidence 阻断、非法端点阻断、重复审核冲突和失败事务保持 PendingReview。
+- 最终验证：18 tests passed，覆盖率 87%，Ruff/Mypy/uv lock/Alembic offline SQL 全部通过。
+
+## Candidate 合并与审核工作台设计结论（2026-07-28）
+- 现有 Web 仅有健康检查展示且中文文本编码损坏，需要重构为真实工作台。
+- 审核页必须同时提供 Candidate 列表、来源/Evidence 上下文、Payload 和审核动作，避免脱离证据确认。
+- Object Candidate 合并目标必须与候选 object_type 一致；合并只追加 alias，不删除或重定向已有对象 ID。
+- 合并事务追加 ObjectVersion、AuditLog 和 REVISE GraphProjectionEvent，并将 Candidate 标记 merged。
+- 为支持审核匹配，新增正式对象搜索；为支持来源回看，新增来源列表。
+- 视觉采用研究档案台方向，以暖纸色、墨色和朱砂色表达“证据先于结论”。
+
+## Candidate 合并与审核工作台落地结果（2026-07-28）
+- 新增正式对象搜索、来源列表和 Object Candidate merge 命令。
+- 合并事务追加 aliases、对象版本、审计和 revise 投影事件，不创建重复正式对象。
+- Web 从乱码占位页重构为来源录入和三栏候选审核工作台，API/Neo4j 状态边界清晰。
+- 前端 package-lock 已生成；TypeScript 与 Vite build 通过，生产依赖审计 0 漏洞。
+- 浏览器桌面/移动验收通过，无横向溢出，控制台 0 error/warning。
+- 后端 18 tests passed，真实 PostgreSQL 集成测试包含 merge 与 alias 搜索，覆盖率 87%。
