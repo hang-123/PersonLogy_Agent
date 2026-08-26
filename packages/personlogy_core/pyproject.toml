@@ -7,6 +7,9 @@ name = "personlogy-core"
 version = "0.1.0"
 description = "Framework-independent domain and application core for PersonLogy"
 requires-python = ">=3.12,<3.13"
+dependencies = [
+  "pdfplumber>=0.11,<1",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

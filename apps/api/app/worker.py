@@ -4,7 +4,7 @@ import structlog
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.runtime import job_service
+from app.runtime import job_service, pdf_import_service
 
 
 async def run_worker() -> None:
@@ -18,7 +18,14 @@ async def run_worker() -> None:
             continue
         logger.info("job_claimed", job_id=str(job.id), kind=job.kind, attempt=job.attempt)
         try:
-            await job_service.report_progress(job.id, 10, "accepted")
+            if job.kind == "pdf.parse":
+                await job_service.report_progress(job.id, 20, "parsing")
+                block_count = await pdf_import_service.process_pdf_job(job)
+                await job_service.report_progress(
+                    job.id, 90, f"content_blocks_written:{block_count}"
+                )
+            else:
+                await job_service.report_progress(job.id, 10, "accepted")
             await job_service.succeed(job.id)
         except Exception as error:
             logger.exception("job_failed", job_id=str(job.id), error=str(error))

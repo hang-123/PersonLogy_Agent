@@ -4,6 +4,12 @@
 
 接收 PDF、校验格式、保存原始文件、创建来源版本并生成异步解析任务。
 
+当前本地实现：SQLite 保存来源、版本、hash、对象 key、ContentBlock 和任务状态；PDF
+二进制先保存到 `PKS_PDF_STORAGE_ROOT` 指定的本地目录，后续可替换为 MinIO/S3 适配器。
+
+上传接口：`POST /v1/pdfs/upload`（multipart/form-data，字段为
+`project_name`、`project_slug`、`title` 和 `file`）。
+
 ## 验收标准
 
 ### 有效 PDF
@@ -29,4 +35,3 @@
 - Given PDF 解析任务成功
 - When 系统生成 ContentBlock
 - Then 每个可引用片段保留页码、段落顺序和内容哈希
-

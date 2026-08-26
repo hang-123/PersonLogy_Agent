@@ -12,6 +12,10 @@
 - 页码、标题、段落和表格解析；
 - ContentBlock 输出。
 
+当前落地顺序：上传接口同步完成校验、hash 去重、原文落盘、SourceVersion 和解析任务
+创建；Worker 异步完成 PDF 解析并写入 ContentBlock。GEL 未接通期间使用 SQLite + 本地
+文件存储，数据库不保存 PDF 二进制。
+
 ## 不负责
 
 - 知识点和关系抽取；
@@ -27,4 +31,3 @@
 - Given 解析成功
 - When 用户查看 ContentBlock
 - Then 每个片段可定位到页码和段落
-

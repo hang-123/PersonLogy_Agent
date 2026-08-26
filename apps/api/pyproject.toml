@@ -10,6 +10,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.116,<1",
   "personlogy-core==0.1.0",
+  "python-multipart>=0.0.20,<1",
   "pydantic-settings>=2.10,<3",
   "structlog>=25.4,<26",
   "uvicorn[standard]>=0.35,<1",

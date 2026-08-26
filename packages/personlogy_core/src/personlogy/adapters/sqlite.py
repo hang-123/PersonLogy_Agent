@@ -15,7 +15,14 @@ from uuid import UUID
 from personlogy.domain.job import Job, JobStatus
 from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode
 from personlogy.domain.relation.models import Relation, RelationType
-from personlogy.domain.source.models import ContentBlock, Project, Source, SourceVersion
+from personlogy.domain.source.conversation import Conversation, ConversationMessage
+from personlogy.domain.source.models import (
+    ContentBlock,
+    Project,
+    Source,
+    SourceKind,
+    SourceVersion,
+)
 from personlogy.ports.queue import JobQueue
 from personlogy.ports.repositories import JobRepository, KnowledgeRepository, SourceRepository
 from personlogy.ports.unit_of_work import UnitOfWork
@@ -36,6 +43,29 @@ CREATE TABLE IF NOT EXISTS source (
     kind TEXT NOT NULL,
     title TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conversation (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES project(id),
+    source_id TEXT NOT NULL REFERENCES source(id),
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    metadata TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(project_id, external_id)
+);
+CREATE TABLE IF NOT EXISTS conversation_message (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversation(id),
+    external_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    parent_external_id TEXT,
+    attachments TEXT NOT NULL,
+    UNIQUE(conversation_id, external_id)
 );
 CREATE TABLE IF NOT EXISTS source_version (
     id TEXT PRIMARY KEY,
@@ -130,6 +160,10 @@ CREATE INDEX IF NOT EXISTS job_ready_idx
 
 
 def _json(value: dict[str, object]) -> str:
+    return _json_value(value)
+
+
+def _json_value(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
@@ -138,6 +172,13 @@ def _mapping(value: str) -> dict[str, object]:
     if not isinstance(parsed, dict):
         raise ValueError("stored JSON value is not an object")
     return cast(dict[str, object], parsed)
+
+
+def _mappings(value: str) -> tuple[dict[str, object], ...]:
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        raise ValueError("stored JSON value is not a list")
+    return tuple(cast(dict[str, object], item) for item in parsed)
 
 
 def _timestamp(value: datetime) -> str:
@@ -166,8 +207,11 @@ class SQLiteStore:
         self.path = str(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as connection:
+        connection = self.connect()
+        try:
             connection.executescript(SCHEMA)
+        finally:
+            connection.close()
 
     def connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, check_same_thread=False)
@@ -190,6 +234,17 @@ class SQLiteSourceRepository:
         except sqlite3.IntegrityError as error:
             raise DomainValidationError("project slug already exists") from error
 
+    async def get_project_by_slug(self, slug: str) -> Project | None:
+        row = self._connection.execute(
+            "SELECT * FROM project WHERE slug = ?", (slug,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Project(
+            name=row["name"], slug=row["slug"], id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+        )
+
     async def add_source(self, source: Source) -> None:
         try:
             self._connection.execute(
@@ -205,6 +260,97 @@ class SQLiteSourceRepository:
             )
         except sqlite3.IntegrityError as error:
             raise DomainValidationError("source project does not exist") from error
+
+    async def get_source(
+        self, project_id: UUID, kind: SourceKind, title: str
+    ) -> Source | None:
+        row = self._connection.execute(
+            """SELECT * FROM source
+               WHERE project_id = ? AND kind = ? AND title = ?
+               ORDER BY created_at ASC LIMIT 1""",
+            (_id(project_id), kind.value, title),
+        ).fetchone()
+        if row is None:
+            return None
+        return Source(
+            project_id=UUID(row["project_id"]),
+            kind=SourceKind(row["kind"]),
+            title=row["title"],
+            id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+        )
+
+    async def add_conversation(self, conversation: Conversation) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO conversation
+                   (id, project_id, source_id, external_id, title, metadata, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(conversation.id), _id(conversation.project_id),
+                    _id(conversation.source_id), conversation.external_id,
+                    conversation.title, _json(conversation.metadata),
+                    _timestamp(conversation.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError(
+                "conversation project/source does not exist or id already exists"
+            ) from error
+
+    async def get_conversation(
+        self, project_id: UUID, external_id: str
+    ) -> Conversation | None:
+        row = self._connection.execute(
+            """SELECT * FROM conversation
+               WHERE project_id = ? AND external_id = ?""",
+            (_id(project_id), external_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return Conversation(
+            project_id=UUID(row["project_id"]), source_id=UUID(row["source_id"]),
+            external_id=row["external_id"], title=row["title"],
+            metadata=_mapping(row["metadata"]), id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+        )
+
+    async def add_message(self, message: ConversationMessage) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO conversation_message
+                   (id, conversation_id, external_id, role, content, ordinal,
+                    content_hash, created_at, parent_external_id, attachments)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(message.id), _id(message.conversation_id), message.external_id,
+                    message.role, message.content, message.ordinal, message.content_hash,
+                    _timestamp(message.created_at), message.parent_external_id,
+                    _json_value(list(message.attachments)),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError(
+                "conversation does not exist or message id already exists"
+            ) from error
+
+    async def get_message(
+        self, conversation_id: UUID, external_id: str
+    ) -> ConversationMessage | None:
+        row = self._connection.execute(
+            """SELECT * FROM conversation_message
+               WHERE conversation_id = ? AND external_id = ?""",
+            (_id(conversation_id), external_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return ConversationMessage(
+            conversation_id=UUID(row["conversation_id"]), external_id=row["external_id"],
+            role=row["role"], content=row["content"], ordinal=row["ordinal"],
+            content_hash=row["content_hash"], created_at=_required_datetime(row["created_at"]),
+            parent_external_id=row["parent_external_id"],
+            attachments=_mappings(row["attachments"]), id=UUID(row["id"]),
+        )
 
     async def add_version(self, version: SourceVersion) -> None:
         try:
@@ -226,6 +372,51 @@ class SQLiteSourceRepository:
                 "source version parent does not exist or version/content hash already exists"
             ) from error
 
+    async def get_version(self, version_id: UUID) -> SourceVersion | None:
+        row = self._connection.execute(
+            "SELECT * FROM source_version WHERE id = ?", (_id(version_id),)
+        ).fetchone()
+        if row is None:
+            return None
+        return SourceVersion(
+            source_id=UUID(row["source_id"]),
+            version=row["version"],
+            content_hash=row["content_hash"],
+            object_key=row["object_key"],
+            id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+        )
+
+    async def get_pdf_version_by_hash(
+        self, project_id: UUID, content_hash: str
+    ) -> SourceVersion | None:
+        row = self._connection.execute(
+            """SELECT version.* FROM source_version AS version
+               JOIN source ON source.id = version.source_id
+               WHERE source.project_id = ? AND source.kind = 'pdf'
+                 AND version.content_hash = ?
+               ORDER BY version.created_at ASC LIMIT 1""",
+            (_id(project_id), content_hash),
+        ).fetchone()
+        if row is None:
+            return None
+        return SourceVersion(
+            source_id=UUID(row["source_id"]),
+            version=row["version"],
+            content_hash=row["content_hash"],
+            object_key=row["object_key"],
+            id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+        )
+
+    async def next_version_number(self, source_id: UUID) -> int:
+        row = self._connection.execute(
+            "SELECT COALESCE(MAX(version), 0) + 1 AS next_version "
+            "FROM source_version WHERE source_id = ?",
+            (_id(source_id),),
+        ).fetchone()
+        return int(row["next_version"])
+
     async def add_block(self, block: ContentBlock) -> None:
         try:
             self._connection.execute(
@@ -245,6 +436,23 @@ class SQLiteSourceRepository:
             raise DomainValidationError(
                 "content block source version does not exist or ordinal already exists"
             ) from error
+
+    async def list_blocks(self, source_version_id: UUID) -> list[ContentBlock]:
+        rows = self._connection.execute(
+            "SELECT * FROM content_block WHERE source_version_id = ? ORDER BY ordinal ASC",
+            (_id(source_version_id),),
+        ).fetchall()
+        return [
+            ContentBlock(
+                source_version_id=UUID(row["source_version_id"]),
+                ordinal=row["ordinal"],
+                content=row["content"],
+                content_hash=row["content_hash"],
+                locator=_mapping(row["locator"]),
+                id=UUID(row["id"]),
+            )
+            for row in rows
+        ]
 
 
 class SQLiteKnowledgeRepository:
@@ -493,7 +701,8 @@ class SQLiteJobQueue(JobQueue):
     async def dequeue(self, *, timeout_seconds: float | None = None) -> UUID | None:
         deadline = monotonic() + timeout_seconds if timeout_seconds is not None else None
         while True:
-            with self._store.connect() as connection:
+            connection = self._store.connect()
+            try:
                 row = connection.execute(
                     """SELECT id FROM job
                        WHERE status = 'queued'
@@ -502,6 +711,8 @@ class SQLiteJobQueue(JobQueue):
                        ORDER BY created_at ASC LIMIT 1""",
                     (_timestamp(datetime.now(UTC)),),
                 ).fetchone()
+            finally:
+                connection.close()
             if row is not None:
                 return UUID(row["id"])
             if deadline is not None and monotonic() >= deadline:

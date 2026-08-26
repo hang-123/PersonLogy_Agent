@@ -6,7 +6,14 @@ from uuid import UUID
 from personlogy.domain.job import Job
 from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode
 from personlogy.domain.relation.models import Relation, RelationType
-from personlogy.domain.source.models import ContentBlock, Project, Source, SourceVersion
+from personlogy.domain.source.conversation import Conversation, ConversationMessage
+from personlogy.domain.source.models import (
+    ContentBlock,
+    Project,
+    Source,
+    SourceKind,
+    SourceVersion,
+)
 from personlogy.shared.errors import DomainValidationError
 
 
@@ -22,6 +29,8 @@ class InMemoryStore:
     relations: dict[UUID, Relation] = field(default_factory=dict)
     relation_types: dict[str, RelationType] = field(default_factory=dict)
     jobs: dict[UUID, Job] = field(default_factory=dict)
+    conversations: dict[UUID, Conversation] = field(default_factory=dict)
+    messages: dict[UUID, ConversationMessage] = field(default_factory=dict)
 
     def clone(self) -> "InMemoryStore":
         return InMemoryStore(
@@ -35,6 +44,8 @@ class InMemoryStore:
             relations=self.relations.copy(),
             relation_types=self.relation_types.copy(),
             jobs=self.jobs.copy(),
+            conversations=self.conversations.copy(),
+            messages=self.messages.copy(),
         )
 
 
@@ -47,10 +58,74 @@ class InMemorySourceRepository:
             raise DomainValidationError("project slug already exists")
         self._store.projects[project.id] = project
 
+    async def get_project_by_slug(self, slug: str) -> Project | None:
+        return next((item for item in self._store.projects.values() if item.slug == slug), None)
+
+    async def add_conversation(self, conversation: Conversation) -> None:
+        if (
+            conversation.project_id not in self._store.projects
+            or conversation.source_id not in self._store.sources
+        ):
+            raise DomainValidationError("conversation project or source does not exist")
+        if any(
+            item.project_id == conversation.project_id
+            and item.external_id == conversation.external_id
+            for item in self._store.conversations.values()
+        ):
+            raise DomainValidationError("conversation id already exists")
+        self._store.conversations[conversation.id] = conversation
+
+    async def get_conversation(
+        self, project_id: UUID, external_id: str
+    ) -> Conversation | None:
+        return next(
+            (
+                item
+                for item in self._store.conversations.values()
+                if item.project_id == project_id and item.external_id == external_id
+            ),
+            None,
+        )
+
+    async def add_message(self, message: ConversationMessage) -> None:
+        if message.conversation_id not in self._store.conversations:
+            raise DomainValidationError("conversation does not exist")
+        if any(
+            item.conversation_id == message.conversation_id
+            and item.external_id == message.external_id
+            for item in self._store.messages.values()
+        ):
+            raise DomainValidationError("message id already exists")
+        self._store.messages[message.id] = message
+
+    async def get_message(
+        self, conversation_id: UUID, external_id: str
+    ) -> ConversationMessage | None:
+        return next(
+            (
+                item
+                for item in self._store.messages.values()
+                if item.conversation_id == conversation_id and item.external_id == external_id
+            ),
+            None,
+        )
+
     async def add_source(self, source: Source) -> None:
         if source.project_id not in self._store.projects:
             raise DomainValidationError("source project does not exist")
         self._store.sources[source.id] = source
+
+    async def get_source(
+        self, project_id: UUID, kind: SourceKind, title: str
+    ) -> Source | None:
+        return next(
+            (
+                item
+                for item in self._store.sources.values()
+                if item.project_id == project_id and item.kind is kind and item.title == title
+            ),
+            None,
+        )
 
     async def add_version(self, version: SourceVersion) -> None:
         if version.source_id not in self._store.sources:
@@ -63,10 +138,46 @@ class InMemorySourceRepository:
             raise DomainValidationError("source content hash already exists")
         self._store.versions[version.id] = version
 
+    async def get_version(self, version_id: UUID) -> SourceVersion | None:
+        return self._store.versions.get(version_id)
+
+    async def get_pdf_version_by_hash(
+        self, project_id: UUID, content_hash: str
+    ) -> SourceVersion | None:
+        source_ids = {
+            source.id
+            for source in self._store.sources.values()
+            if source.project_id == project_id and source.kind is SourceKind.PDF
+        }
+        return next(
+            (
+                item
+                for item in self._store.versions.values()
+                if item.source_id in source_ids and item.content_hash == content_hash
+            ),
+            None,
+        )
+
+    async def next_version_number(self, source_id: UUID) -> int:
+        versions = [
+            item.version for item in self._store.versions.values() if item.source_id == source_id
+        ]
+        return max(versions, default=0) + 1
+
     async def add_block(self, block: ContentBlock) -> None:
         if block.source_version_id not in self._store.versions:
             raise DomainValidationError("content block source version does not exist")
         self._store.blocks[block.id] = block
+
+    async def list_blocks(self, source_version_id: UUID) -> list[ContentBlock]:
+        return sorted(
+            (
+                item
+                for item in self._store.blocks.values()
+                if item.source_version_id == source_version_id
+            ),
+            key=lambda item: item.ordinal,
+        )
 
 
 class InMemoryKnowledgeRepository:

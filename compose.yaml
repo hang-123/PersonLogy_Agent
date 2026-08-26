@@ -23,6 +23,8 @@ services:
       PKS_GEL_DSN: ${PKS_GEL_DSN:-}
       PKS_STORAGE_BACKEND: ${PKS_STORAGE_BACKEND:-sqlite}
       PKS_SQLITE_PATH: ${PKS_SQLITE_PATH:-/workspace/data/personlogy.sqlite3}
+      PKS_PDF_STORAGE_ROOT: ${PKS_PDF_STORAGE_ROOT:-/workspace/data/files}
+      PKS_PDF_MAX_SIZE_BYTES: ${PKS_PDF_MAX_SIZE_BYTES:-26214400}
       PKS_QUEUE_BACKEND: ${PKS_QUEUE_BACKEND:-sqlite}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
@@ -37,6 +39,8 @@ services:
     environment:
       PKS_STORAGE_BACKEND: ${PKS_STORAGE_BACKEND:-sqlite}
       PKS_SQLITE_PATH: ${PKS_SQLITE_PATH:-/workspace/data/personlogy.sqlite3}
+      PKS_PDF_STORAGE_ROOT: ${PKS_PDF_STORAGE_ROOT:-/workspace/data/files}
+      PKS_PDF_MAX_SIZE_BYTES: ${PKS_PDF_MAX_SIZE_BYTES:-26214400}
       PKS_QUEUE_BACKEND: ${PKS_QUEUE_BACKEND:-sqlite}
     volumes:
       - ./data:/workspace/data

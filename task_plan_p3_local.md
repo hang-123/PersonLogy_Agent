@@ -11,6 +11,10 @@
 - [x] Phase 3: 接入 API/Worker 并补充端到端测试
 - [x] Phase 4: 运行静态检查、测试和启动验证
 - [x] Phase 5: 更新说明与交付记录
+- [x] Phase 6: 建立 Conversation/Message 领域模型与本地存储
+- [x] Phase 7: 接入对话导入应用服务和 API
+- [x] Phase 8: 补充幂等、冲突和接口测试
+- [x] Phase 9: 更新说明并完成质量验证
 
 ## Decisions
 
@@ -26,4 +30,4 @@
 
 ## Status
 
-**Currently complete** - SQLite 适配器已接入 API/Worker，测试、静态检查和交付说明均已完成。
+**Currently complete** - 已完成本地持久化和对话导入闭环，测试、静态检查和交付说明均已完成。
