@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="2600" viewBox="0 0 1900 2600">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 Z" fill="#27313b"/></marker>
+    <style>
+      .title{font:700 30px 'Microsoft YaHei',Arial,sans-serif;fill:#202830}
+      .lane{font:700 20px 'Microsoft YaHei',Arial,sans-serif;fill:#202830}
+      .text{font:600 17px 'Microsoft YaHei',Arial,sans-serif;fill:#202830}
+      .small{font:400 14px 'Microsoft YaHei',Arial,sans-serif;fill:#4a5661}
+      .box{fill:#eaf0ff;stroke:#202830;stroke-width:2.5;rx:12}
+      .decision{fill:#fff0c9;stroke:#202830;stroke-width:2.5}
+      .note{fill:#fff8e8;stroke:#b38b35;stroke-width:2.5;rx:12}
+      .arrow{stroke:#27313b;stroke-width:2.5;fill:none;marker-end:url(#arrow)}
+      .dash{stroke:#806fc7;stroke-width:2.2;fill:none;stroke-dasharray:9 8;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1900" height="2600" fill="#ffffff"/>
+  <text x="950" y="48" text-anchor="middle" class="title">PersonLogy Agent v0.1 系统流程图（修订版）</text>
+  <text x="950" y="78" text-anchor="middle" class="small">稳定 Schema + 受控知识写入 + 可重建索引 + 带证据混合检索</text>
+
+  <rect x="40" y="110" width="1820" height="2410" fill="#fff" stroke="#202830" stroke-width="2"/>
+  <rect x="40" y="110" width="100" height="2410" fill="#f4f4f4" stroke="#202830" stroke-width="2"/>
+  <rect x="140" y="110" width="420" height="2410" fill="#fff" stroke="#202830" stroke-width="2"/>
+  <rect x="560" y="110" width="430" height="2410" fill="#fff" stroke="#202830" stroke-width="2"/>
+  <rect x="990" y="110" width="430" height="2410" fill="#fff" stroke="#202830" stroke-width="2"/>
+  <rect x="1420" y="110" width="440" height="2410" fill="#fff" stroke="#202830" stroke-width="2"/>
+  <line x1="40" y1="205" x2="1860" y2="205" stroke="#202830" stroke-width="2"/>
+  <text x="90" y="165" text-anchor="middle" class="lane">阶段</text>
+  <text x="350" y="165" text-anchor="middle" class="lane">数据导入</text>
+  <text x="775" y="165" text-anchor="middle" class="lane">知识编译</text>
+  <text x="1205" y="165" text-anchor="middle" class="lane">数据治理与回写</text>
+  <text x="1640" y="165" text-anchor="middle" class="lane">模型检索与交互</text>
+
+  <text x="90" y="285" text-anchor="middle" class="small" transform="rotate(-90 90 285)">输入</text>
+  <rect x="230" y="250" width="240" height="80" class="box"/>
+  <text x="350" y="284" text-anchor="middle" class="text">PDF / 对话导入</text>
+  <text x="350" y="308" text-anchor="middle" class="small">上传文件或提交标准 JSON</text>
+  <path d="M350 330 V390" class="arrow"/>
+  <rect x="230" y="395" width="240" height="80" class="box"/>
+  <text x="350" y="429" text-anchor="middle" class="text">格式识别与校验</text>
+  <text x="350" y="453" text-anchor="middle" class="small">MIME · 文件大小 · 完整性</text>
+  <path d="M350 475 V535" class="arrow"/>
+  <polygon points="350,540 420,600 350,660 280,600" class="decision"/>
+  <text x="350" y="594" text-anchor="middle" class="text">校验</text>
+  <text x="350" y="618" text-anchor="middle" class="text">通过?</text>
+  <text x="435" y="585" class="small">是</text>
+  <text x="260" y="695" class="small">否</text>
+  <path d="M280 600 H180 V2080 H350" class="arrow"/>
+  <rect x="230" y="2085" width="240" height="75" class="note"/>
+  <text x="350" y="2118" text-anchor="middle" class="text">拒绝并记录原因</text>
+  <text x="350" y="2142" text-anchor="middle" class="small">用户修复后重新提交</text>
+  <path d="M350 660 V740" class="arrow"/>
+  <rect x="230" y="745" width="240" height="95" class="box"/>
+  <text x="350" y="780" text-anchor="middle" class="text">保存原始资料</text>
+  <text x="350" y="805" text-anchor="middle" class="small">MinIO · 哈希 · SourceVersion</text>
+  <text x="350" y="825" text-anchor="middle" class="small">建立可追溯来源 ID</text>
+  <path d="M470 792 H625" class="arrow"/>
+
+  <text x="90" y="910" text-anchor="middle" class="small" transform="rotate(-90 90 910)">解析</text>
+  <rect x="625" y="745" width="280" height="95" class="box"/>
+  <text x="765" y="780" text-anchor="middle" class="text">内容解析与标准化</text>
+  <text x="765" y="805" text-anchor="middle" class="small">页码 / 消息 / 标题 / 段落</text>
+  <text x="765" y="825" text-anchor="middle" class="small">生成 ContentBlock</text>
+  <path d="M765 840 V910" class="arrow"/>
+  <rect x="625" y="915" width="280" height="95" class="box"/>
+  <text x="765" y="950" text-anchor="middle" class="text">LLMWiki 知识编译</text>
+  <text x="765" y="975" text-anchor="middle" class="small">主题 · Concept · Claim</text>
+  <text x="765" y="995" text-anchor="middle" class="small">Relation · Citation 候选</text>
+  <path d="M905 962 H1045" class="arrow"/>
+
+  <text x="90" y="1190" text-anchor="middle" class="small" transform="rotate(-90 90 1190)">治理</text>
+  <rect x="1045" y="915" width="280" height="95" class="box"/>
+  <text x="1185" y="950" text-anchor="middle" class="text">结构规则校验</text>
+  <text x="1185" y="975" text-anchor="middle" class="small">Schema · 类型 · 必填字段</text>
+  <text x="1185" y="995" text-anchor="middle" class="small">来源引用完整性</text>
+  <path d="M1185 1010 V1080" class="arrow"/>
+  <rect x="1045" y="1085" width="280" height="95" class="box"/>
+  <text x="1185" y="1120" text-anchor="middle" class="text">规则去重与冲突检测</text>
+  <text x="1185" y="1145" text-anchor="middle" class="small">哈希 · 精确 · 版本 · 状态</text>
+  <path d="M1185 1180 V1250" class="arrow"/>
+  <rect x="1045" y="1255" width="280" height="95" class="box"/>
+  <text x="1185" y="1290" text-anchor="middle" class="text">语义去重与关系校验</text>
+  <text x="1185" y="1315" text-anchor="middle" class="small">LLM 辅助，不直接写库</text>
+  <path d="M1045 1302 H930 V1410 H765" class="dash"/>
+  <text x="938" y="1360" class="small">需补充或合并</text>
+  <path d="M1185 1350 V1420" class="arrow"/>
+  <polygon points="1185,1425 1255,1485 1185,1545 1115,1485" class="decision"/>
+  <text x="1185" y="1479" text-anchor="middle" class="text">需人工</text>
+  <text x="1185" y="1503" text-anchor="middle" class="text">确认?</text>
+  <text x="1270" y="1472" class="small">是</text>
+  <text x="1080" y="1580" class="small">否 / 机器确认</text>
+  <path d="M1255 1485 H1370 V1610 H1185" class="arrow"/>
+  <rect x="1045" y="1615" width="280" height="95" class="note"/>
+  <text x="1185" y="1650" text-anchor="middle" class="text">人工审核</text>
+  <text x="1185" y="1675" text-anchor="middle" class="small">确认 / 驳回 / 修改证据</text>
+  <path d="M1185 1710 V1780" class="arrow"/>
+  <rect x="1045" y="1785" width="280" height="105" class="box"/>
+  <text x="1185" y="1820" text-anchor="middle" class="text">受控数据回写</text>
+  <text x="1185" y="1845" text-anchor="middle" class="small">Gel 事务 · Claim / Relation</text>
+  <text x="1185" y="1867" text-anchor="middle" class="small">OKF 导出 · 审计事件</text>
+  <path d="M1325 1837 H1490" class="arrow"/>
+
+  <text x="90" y="1990" text-anchor="middle" class="small" transform="rotate(-90 90 1990)">检索</text>
+  <rect x="1490" y="1785" width="300" height="105" class="box"/>
+  <text x="1640" y="1820" text-anchor="middle" class="text">索引构建</text>
+  <text x="1640" y="1845" text-anchor="middle" class="small">BM25 / 全文 · 向量 · 关系</text>
+  <text x="1640" y="1867" text-anchor="middle" class="small">异步执行，可重建</text>
+  <path d="M1640 1890 V1960" class="arrow"/>
+  <rect x="1490" y="1965" width="300" height="105" class="box"/>
+  <text x="1640" y="2000" text-anchor="middle" class="text">混合检索</text>
+  <text x="1640" y="2025" text-anchor="middle" class="small">关键词 + 向量 + 关系扩展</text>
+  <text x="1640" y="2047" text-anchor="middle" class="small">权限过滤 · 结果重排</text>
+  <path d="M1640 2070 V2140" class="arrow"/>
+  <rect x="1490" y="2145" width="300" height="105" class="box"/>
+  <text x="1640" y="2180" text-anchor="middle" class="text">证据组装与 RAG</text>
+  <text x="1640" y="2205" text-anchor="middle" class="small">上下文 · 关系路径 · 原文引用</text>
+  <text x="1640" y="2227" text-anchor="middle" class="small">生成回答并返回来源</text>
+  <path d="M1490 2197 H1350 V2290 H1185" class="arrow"/>
+  <rect x="1045" y="2295" width="280" height="85" class="box"/>
+  <text x="1185" y="2330" text-anchor="middle" class="text">前端展示与反馈</text>
+  <text x="1185" y="2355" text-anchor="middle" class="small">问答 · 知识图 · 引用定位</text>
+
+  <rect x="600" y="2220" width="740" height="150" class="note"/>
+  <text x="970" y="2258" text-anchor="middle" class="text">重要架构约束</text>
+  <text x="970" y="2290" text-anchor="middle" class="small">LLM 不根据每批资料动态建表或删表；核心 Schema 由迁移管理。</text>
+  <text x="970" y="2316" text-anchor="middle" class="small">LLM 只生成候选知识和受控写入请求，所有写入必须经过校验与权限控制。</text>
+  <text x="950" y="2475" text-anchor="middle" class="small">异常路径：失败 → 记录任务状态 → 重试 / 人工修订 → 重新编译；索引数据始终可从 Gel 主数据重建。</text>
+</svg>

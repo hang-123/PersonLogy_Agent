@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1080" viewBox="0 0 1800 1080">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#526aa8"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#8b97b8" flood-opacity=".22"/>
+    </filter>
+    <style>
+      .title{font:700 32px 'Microsoft YaHei',Arial,sans-serif;fill:#26324a}
+      .subtitle{font:400 17px 'Microsoft YaHei',Arial,sans-serif;fill:#66738d}
+      .groupTitle{font:700 20px 'Microsoft YaHei',Arial,sans-serif;fill:#3a4660}
+      .label{font:600 17px 'Microsoft YaHei',Arial,sans-serif;fill:#28344c}
+      .small{font:400 15px 'Microsoft YaHei',Arial,sans-serif;fill:#4e5b76}
+      .tiny{font:400 13px 'Microsoft YaHei',Arial,sans-serif;fill:#64708a}
+      .card{fill:#fff;stroke-width:3;rx:18;filter:url(#shadow)}
+      .pill{fill:#fff;stroke-width:2.5;rx:12}
+      .arrow{stroke:#526aa8;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .dash{stroke:#8a77c5;stroke-width:2.5;fill:none;stroke-dasharray:9 8;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1800" height="1080" fill="#fbfcff"/>
+  <text x="900" y="52" text-anchor="middle" class="title">PersonLogy Agent v0.1 系统流程图</text>
+  <text x="900" y="82" text-anchor="middle" class="subtitle">从资料导入到知识编译、治理、索引与带证据检索的完整闭环</text>
+
+  <rect x="55" y="120" width="1690" height="170" rx="26" fill="#eef3ff" stroke="#5879c9" stroke-width="3"/>
+  <text x="90" y="155" class="groupTitle">输入与接入</text>
+  <rect x="105" y="180" width="250" height="78" class="pill" stroke="#5879c9"/>
+  <text x="230" y="212" text-anchor="middle" class="label">用户 / 外部来源</text>
+  <text x="230" y="239" text-anchor="middle" class="small">PDF 文件 · 大模型对话</text>
+  <path d="M355 219 H420" class="arrow"/>
+  <rect x="425" y="180" width="300" height="78" class="pill" stroke="#5879c9"/>
+  <text x="575" y="212" text-anchor="middle" class="label">API 网关与鉴权</text>
+  <text x="575" y="239" text-anchor="middle" class="small">身份 · 权限 · 限流 · 审计</text>
+  <path d="M725 219 H790" class="arrow"/>
+  <rect x="795" y="180" width="300" height="78" class="pill" stroke="#5879c9"/>
+  <text x="945" y="212" text-anchor="middle" class="label">数据导入模块</text>
+  <text x="945" y="239" text-anchor="middle" class="small">格式识别 · 文件接收 · 元数据</text>
+  <path d="M1095 219 H1160" class="arrow"/>
+  <rect x="1165" y="180" width="300" height="78" class="pill" stroke="#5879c9"/>
+  <text x="1315" y="212" text-anchor="middle" class="label">任务编排模块</text>
+  <text x="1315" y="239" text-anchor="middle" class="small">队列 · 状态 · 重试 · 幂等</text>
+  <path d="M1465 219 H1530" class="arrow"/>
+  <rect x="1535" y="180" width="155" height="78" class="pill" stroke="#5879c9"/>
+  <text x="1612" y="212" text-anchor="middle" class="label">任务完成</text>
+  <text x="1612" y="239" text-anchor="middle" class="small">可追踪</text>
+
+  <rect x="55" y="335" width="1690" height="310" rx="26" fill="#fff7dc" stroke="#d8b34b" stroke-width="3"/>
+  <text x="90" y="370" class="groupTitle">知识处理与数据治理</text>
+  <rect x="95" y="405" width="360" height="190" class="card" stroke="#d8b34b"/>
+  <text x="275" y="440" text-anchor="middle" class="label">内容解析模块</text>
+  <rect x="125" y="463" width="135" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="192" y="491" text-anchor="middle" class="small">PDF 解析</text>
+  <rect x="290" y="463" width="135" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="357" y="491" text-anchor="middle" class="small">对话标准化</text>
+  <rect x="125" y="525" width="135" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="192" y="553" text-anchor="middle" class="small">内容切分</text>
+  <rect x="290" y="525" width="135" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="357" y="553" text-anchor="middle" class="small">来源指纹</text>
+
+  <path d="M455 500 H515" class="arrow"/>
+  <rect x="520" y="405" width="360" height="190" class="card" stroke="#d8b34b"/>
+  <text x="700" y="440" text-anchor="middle" class="label">知识编译模块</text>
+  <rect x="550" y="463" width="140" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="620" y="491" text-anchor="middle" class="small">LLMWiki 整理</text>
+  <rect x="710" y="463" width="140" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="780" y="491" text-anchor="middle" class="small">概念 / Claim</text>
+  <rect x="550" y="525" width="140" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="620" y="553" text-anchor="middle" class="small">关系抽取</text>
+  <rect x="710" y="525" width="140" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="780" y="553" text-anchor="middle" class="small">OKF 生成</text>
+
+  <path d="M880 500 H940" class="arrow"/>
+  <rect x="945" y="405" width="360" height="190" class="card" stroke="#d8b34b"/>
+  <text x="1125" y="440" text-anchor="middle" class="label">数据治理模块</text>
+  <rect x="975" y="463" width="140" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="1045" y="491" text-anchor="middle" class="small">规则校验</text>
+  <rect x="1135" y="463" width="140" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="1205" y="491" text-anchor="middle" class="small">重复检测</text>
+  <rect x="975" y="525" width="140" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="1045" y="553" text-anchor="middle" class="small">来源验证</text>
+  <rect x="1135" y="525" width="140" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="1205" y="553" text-anchor="middle" class="small">人工审核</text>
+
+  <path d="M1305 500 H1365" class="arrow"/>
+  <rect x="1370" y="405" width="335" height="190" class="card" stroke="#d8b34b"/>
+  <text x="1537" y="440" text-anchor="middle" class="label">回写与索引模块</text>
+  <rect x="1400" y="463" width="125" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="1462" y="491" text-anchor="middle" class="small">Gel 事务</text>
+  <rect x="1540" y="463" width="125" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="1602" y="491" text-anchor="middle" class="small">MinIO 原文</text>
+  <rect x="1400" y="525" width="125" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="1462" y="553" text-anchor="middle" class="small">全文索引</text>
+  <rect x="1540" y="525" width="125" height="45" class="pill" stroke="#d8b34b"/>
+  <text x="1602" y="553" text-anchor="middle" class="small">向量 / 关系</text>
+
+  <path d="M1305 560 C1330 720 1030 735 880 700" class="dash"/>
+  <text x="1120" y="716" text-anchor="middle" class="tiny">校验失败或需要补充证据：返回编译 / 审核流程</text>
+
+  <rect x="55" y="690" width="1690" height="265" rx="26" fill="#eee8ff" stroke="#806fc7" stroke-width="3"/>
+  <text x="90" y="725" class="groupTitle">检索、交互与输出</text>
+  <rect x="100" y="765" width="390" height="125" class="card" stroke="#806fc7"/>
+  <text x="295" y="802" text-anchor="middle" class="label">模型检索模块</text>
+  <text x="295" y="836" text-anchor="middle" class="small">全文 + 向量 + 关系混合检索</text>
+  <text x="295" y="864" text-anchor="middle" class="small">关系扩展 · 证据组装 · 冲突识别</text>
+  <path d="M490 827 H560" class="arrow"/>
+  <rect x="565" y="765" width="390" height="125" class="card" stroke="#806fc7"/>
+  <text x="760" y="802" text-anchor="middle" class="label">前端交互模块</text>
+  <text x="760" y="836" text-anchor="middle" class="small">上传 · 进度 · 知识浏览 · 关系图</text>
+  <text x="760" y="864" text-anchor="middle" class="small">带引用问答 · 人工确认</text>
+  <path d="M955 827 H1025" class="arrow"/>
+  <rect x="1030" y="765" width="600" height="125" class="card" stroke="#806fc7"/>
+  <text x="1330" y="802" text-anchor="middle" class="label">最终输出</text>
+  <text x="1330" y="836" text-anchor="middle" class="small">AI 回答 + 知识路径 + 原文引用 + 可信度</text>
+  <text x="1330" y="864" text-anchor="middle" class="small">用户可回到 PDF 页码或对话消息位置</text>
+  <path d="M760 765 C760 710 600 650 490 590" class="dash"/>
+  <text x="635" y="694" text-anchor="middle" class="tiny">用户反馈 / 人工修订回流</text>
+
+  <text x="900" y="1015" text-anchor="middle" class="subtitle">核心边界：原始资料不可变、知识可验证、索引可重建、AI 只能通过受控检索接口访问</text>
+</svg>

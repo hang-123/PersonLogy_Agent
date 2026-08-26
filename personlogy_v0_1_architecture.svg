@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#8996b7" flood-opacity=".2"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 Z" fill="#526aa8"/></marker>
+    <style>
+      .title{font:700 32px 'Microsoft YaHei',Arial,sans-serif;fill:#26324a}
+      .subtitle{font:400 17px 'Microsoft YaHei',Arial,sans-serif;fill:#66738d}
+      .layer{font:700 22px 'Microsoft YaHei',Arial,sans-serif;fill:#26324a}
+      .group{font:700 18px 'Microsoft YaHei',Arial,sans-serif;fill:#3a4660}
+      .label{font:600 16px 'Microsoft YaHei',Arial,sans-serif;fill:#28344c}
+      .small{font:400 14px 'Microsoft YaHei',Arial,sans-serif;fill:#53607a}
+      .box{fill:#fff;stroke-width:3;rx:16;filter:url(#shadow)}
+      .inner{fill:#fff;stroke-width:2.3;rx:11}
+      .line{stroke:#526aa8;stroke-width:2.8;fill:none;marker-end:url(#arrow)}
+      .dline{stroke:#8a77c5;stroke-width:2.2;fill:none;stroke-dasharray:8 7;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1800" height="1200" fill="#fbfcff"/>
+  <text x="900" y="52" text-anchor="middle" class="title">PersonLogy Agent v0.1 系统架构图</text>
+  <text x="900" y="82" text-anchor="middle" class="subtitle">统一知识模型、受控 AI 能力与可重建数据索引</text>
+
+  <text x="44" y="170" class="layer">接入层</text>
+  <rect x="185" y="115" width="1550" height="125" rx="24" fill="#eef3ff" stroke="#5879c9" stroke-width="3"/>
+  <rect x="225" y="145" width="255" height="65" class="inner" stroke="#5879c9"/>
+  <text x="352" y="174" text-anchor="middle" class="label">反向代理</text>
+  <text x="352" y="197" text-anchor="middle" class="small">TLS · 路由 · 静态资源</text>
+  <rect x="520" y="145" width="300" height="65" class="inner" stroke="#5879c9"/>
+  <text x="670" y="174" text-anchor="middle" class="label">API 网关</text>
+  <text x="670" y="197" text-anchor="middle" class="small">统一 API · 限流 · 版本</text>
+  <rect x="860" y="145" width="300" height="65" class="inner" stroke="#5879c9"/>
+  <text x="1010" y="174" text-anchor="middle" class="label">认证与权限</text>
+  <text x="1010" y="197" text-anchor="middle" class="small">用户 · 项目 · 来源 · AI</text>
+  <rect x="1200" y="145" width="475" height="65" class="inner" stroke="#5879c9"/>
+  <text x="1437" y="174" text-anchor="middle" class="label">审计与安全边界</text>
+  <text x="1437" y="197" text-anchor="middle" class="small">请求审计 · 原文访问控制 · 脱敏策略</text>
+
+  <text x="44" y="400" class="layer">应用层</text>
+  <rect x="185" y="270" width="1550" height="285" rx="24" fill="#fff7dc" stroke="#d8b34b" stroke-width="3"/>
+  <rect x="215" y="305" width="270" height="205" class="box" stroke="#d8b34b"/>
+  <text x="350" y="340" text-anchor="middle" class="group">数据导入模块</text>
+  <text x="350" y="376" text-anchor="middle" class="small">PDF 上传 / 对话导入</text>
+  <text x="350" y="404" text-anchor="middle" class="small">格式识别 / 内容解析</text>
+  <text x="350" y="432" text-anchor="middle" class="small">来源指纹 / 版本识别</text>
+  <text x="350" y="460" text-anchor="middle" class="small">统一 Source 接口</text>
+  <rect x="510" y="305" width="270" height="205" class="box" stroke="#d8b34b"/>
+  <text x="645" y="340" text-anchor="middle" class="group">任务编排模块</text>
+  <text x="645" y="376" text-anchor="middle" class="small">队列 / Worker</text>
+  <text x="645" y="404" text-anchor="middle" class="small">状态机 / 重试</text>
+  <text x="645" y="432" text-anchor="middle" class="small">幂等 / 失败恢复</text>
+  <text x="645" y="460" text-anchor="middle" class="small">任务进度 API</text>
+  <rect x="805" y="305" width="270" height="205" class="box" stroke="#d8b34b"/>
+  <text x="940" y="340" text-anchor="middle" class="group">知识编译模块</text>
+  <text x="940" y="376" text-anchor="middle" class="small">LLMWiki 整理</text>
+  <text x="940" y="404" text-anchor="middle" class="small">Concept / Claim</text>
+  <text x="940" y="432" text-anchor="middle" class="small">Relation / Citation</text>
+  <text x="940" y="460" text-anchor="middle" class="small">OKF v0.2 导出</text>
+  <rect x="1100" y="305" width="270" height="205" class="box" stroke="#d8b34b"/>
+  <text x="1235" y="340" text-anchor="middle" class="group">数据治理模块</text>
+  <text x="1235" y="376" text-anchor="middle" class="small">规则校验 / Schema</text>
+  <text x="1235" y="404" text-anchor="middle" class="small">重复与冲突检测</text>
+  <text x="1235" y="432" text-anchor="middle" class="small">来源验证 / 可信度</text>
+  <text x="1235" y="460" text-anchor="middle" class="small">人工审核 / 生命周期</text>
+  <rect x="1395" y="305" width="310" height="205" class="box" stroke="#d8b34b"/>
+  <text x="1550" y="340" text-anchor="middle" class="group">回写、索引与检索</text>
+  <text x="1550" y="376" text-anchor="middle" class="small">Gel 事务写入</text>
+  <text x="1550" y="404" text-anchor="middle" class="small">全文 / 向量 / 关系索引</text>
+  <text x="1550" y="432" text-anchor="middle" class="small">混合检索 / 关系扩展</text>
+  <text x="1550" y="460" text-anchor="middle" class="small">证据包 / 冲突识别</text>
+
+  <text x="44" y="700" class="layer">领域层</text>
+  <rect x="185" y="585" width="1550" height="245" rx="24" fill="#eee8ff" stroke="#806fc7" stroke-width="3"/>
+  <rect x="225" y="625" width="450" height="165" class="box" stroke="#806fc7"/>
+  <text x="450" y="660" text-anchor="middle" class="group">知识对象模型</text>
+  <text x="450" y="695" text-anchor="middle" class="small">Project · Source · SourceVersion</text>
+  <text x="450" y="723" text-anchor="middle" class="small">ContentBlock · KnowledgeNode</text>
+  <text x="450" y="751" text-anchor="middle" class="small">Concept · Claim · Question · Decision</text>
+  <rect x="710" y="625" width="450" height="165" class="box" stroke="#806fc7"/>
+  <text x="935" y="660" text-anchor="middle" class="group">关系与证据模型</text>
+  <text x="935" y="695" text-anchor="middle" class="small">RelationType · KnowledgeRelation</text>
+  <text x="935" y="723" text-anchor="middle" class="small">Citation · Verification · Lifecycle</text>
+  <text x="935" y="751" text-anchor="middle" class="small">支持 · 反驳 · 依赖 · 引用 · 相似</text>
+  <rect x="1195" y="625" width="480" height="165" class="box" stroke="#806fc7"/>
+  <text x="1435" y="660" text-anchor="middle" class="group">AI 语义协议</text>
+  <text x="1435" y="695" text-anchor="middle" class="small">Schema 描述 · Relation 语义</text>
+  <text x="1435" y="723" text-anchor="middle" class="small">受控工具 · 证据包 · 权限过滤</text>
+  <text x="1435" y="751" text-anchor="middle" class="small">AI 只能通过领域接口读写</text>
+
+  <text x="44" y="1015" class="layer">基建层</text>
+  <rect x="185" y="860" width="1550" height="255" rx="24" fill="#e6ebfb" stroke="#526aa8" stroke-width="3"/>
+  <rect x="220" y="900" width="315" height="170" class="box" stroke="#526aa8"/>
+  <text x="377" y="938" text-anchor="middle" class="group">模型服务网关</text>
+  <text x="377" y="972" text-anchor="middle" class="small">LLM · Embedding · Reranker</text>
+  <text x="377" y="1000" text-anchor="middle" class="small">模型路由 · 重试 · 成本统计</text>
+  <text x="377" y="1028" text-anchor="middle" class="small">Prompt / Tool 调用审计</text>
+  <rect x="570" y="900" width="315" height="170" class="box" stroke="#526aa8"/>
+  <text x="727" y="938" text-anchor="middle" class="group">持久化</text>
+  <text x="727" y="972" text-anchor="middle" class="small">Gel 主数据库</text>
+  <text x="727" y="1000" text-anchor="middle" class="small">MinIO 原始文件 / OKF</text>
+  <text x="727" y="1028" text-anchor="middle" class="small">备份 · 恢复 · 迁移</text>
+  <rect x="920" y="900" width="315" height="170" class="box" stroke="#526aa8"/>
+  <text x="1077" y="938" text-anchor="middle" class="group">任务基础设施</text>
+  <text x="1077" y="972" text-anchor="middle" class="small">消息队列 · Worker</text>
+  <text x="1077" y="1000" text-anchor="middle" class="small">缓存 · 分布式锁</text>
+  <text x="1077" y="1028" text-anchor="middle" class="small">任务日志 · 失败重试</text>
+  <rect x="1270" y="900" width="425" height="170" class="box" stroke="#526aa8"/>
+  <text x="1482" y="938" text-anchor="middle" class="group">可观测性与运维</text>
+  <text x="1482" y="972" text-anchor="middle" class="small">结构化日志 · 指标 · Trace</text>
+  <text x="1482" y="1000" text-anchor="middle" class="small">数据质量 · 检索质量 · AI 成本</text>
+  <text x="1482" y="1028" text-anchor="middle" class="small">告警 · 审计 · 灾备</text>
+
+  <path d="M670 240 V270" class="line"/><path d="M1010 240 V270" class="line"/>
+  <path d="M350 555 V585" class="line"/><path d="M940 555 V585" class="line"/><path d="M1550 555 V585" class="line"/>
+  <path d="M377 860 V830" class="dline"/><path d="M727 860 V830" class="dline"/><path d="M1077 860 V830" class="dline"/><path d="M1482 860 V830" class="dline"/>
+  <path d="M485 405 H510" class="line"/><path d="M780 405 H805" class="line"/><path d="M1075 405 H1100" class="line"/><path d="M1370 405 H1395" class="line"/>
+
+  <text x="900" y="1160" text-anchor="middle" class="subtitle">边界原则：应用模块不直接操作底层存储；领域模型定义语义；基建层提供可替换能力；索引均可重建</text>
+</svg>

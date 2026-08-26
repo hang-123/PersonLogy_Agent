@@ -1,0 +1,3 @@
+# Prevent computed properties that use links from appearing in splats.
+# This behavior will become the default in Gel 8.0.
+using future no_linkful_computed_splats;

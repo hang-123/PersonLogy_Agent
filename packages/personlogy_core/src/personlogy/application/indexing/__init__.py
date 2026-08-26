@@ -1,0 +1,2 @@
+"""Rebuildable search-index workflows."""
+
