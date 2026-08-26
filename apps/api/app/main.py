@@ -20,6 +20,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     structlog.get_logger().info(
         "application_started",
         environment=settings.environment,
+        storage_backend=settings.storage_backend,
         queue_backend=settings.queue_backend,
     )
     yield

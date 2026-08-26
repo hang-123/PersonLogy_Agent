@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     environment: Literal["local", "test", "staging", "production"] = "local"
     log_level: str = "INFO"
     gel_dsn: str | None = None
-    queue_backend: Literal["memory", "gel"] = "memory"
+    storage_backend: Literal["memory", "sqlite", "gel"] = "sqlite"
+    sqlite_path: str = "../../data/personlogy.sqlite3"
+    queue_backend: Literal["memory", "sqlite", "gel"] = "sqlite"
     queue_poll_interval_seconds: float = 2.0
     cors_origins: list[AnyHttpUrl] = Field(
         default_factory=lambda: [AnyHttpUrl("http://localhost:5173")]
@@ -24,6 +26,7 @@ class Settings(BaseSettings):
     def dependency_status(self) -> dict[str, str]:
         return {
             "gel": "configured" if self.gel_dsn else "not_configured",
+            "storage": self.storage_backend,
             "queue": self.queue_backend,
         }
 

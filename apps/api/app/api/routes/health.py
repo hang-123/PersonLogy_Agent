@@ -33,7 +33,9 @@ def liveness() -> HealthResponse:
 def readiness() -> HealthResponse:
     settings = get_settings()
     dependencies = settings.dependency_status()
-    status: Literal["ok", "degraded"] = "ok" if settings.gel_dsn else "degraded"
+    storage_ready = settings.storage_backend != "gel"
+    queue_ready = settings.queue_backend != "gel"
+    status: Literal["ok", "degraded"] = "ok" if storage_ready and queue_ready else "degraded"
     return HealthResponse(
         status=status,
         service="person-knowledge-api",

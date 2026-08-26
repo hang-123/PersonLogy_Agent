@@ -20,23 +20,26 @@ services:
         required: false
     environment:
       PKS_ENVIRONMENT: ${PKS_ENVIRONMENT:-local}
-      PKS_GEL_DSN: ${PKS_GEL_DSN:-gel://gel:5656/knowledge}
-      # TP-02 currently provides an in-process adapter; use a shared queue in a later task.
-      PKS_QUEUE_BACKEND: ${PKS_QUEUE_BACKEND:-memory}
+      PKS_GEL_DSN: ${PKS_GEL_DSN:-}
+      PKS_STORAGE_BACKEND: ${PKS_STORAGE_BACKEND:-sqlite}
+      PKS_SQLITE_PATH: ${PKS_SQLITE_PATH:-/workspace/data/personlogy.sqlite3}
+      PKS_QUEUE_BACKEND: ${PKS_QUEUE_BACKEND:-sqlite}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
-    depends_on:
-      - gel
+    volumes:
+      - ./data:/workspace/data
 
   worker:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
     environment:
-      PKS_GEL_DSN: ${PKS_GEL_DSN:-gel://gel:5656/knowledge}
-    depends_on:
-      - gel
+      PKS_STORAGE_BACKEND: ${PKS_STORAGE_BACKEND:-sqlite}
+      PKS_SQLITE_PATH: ${PKS_SQLITE_PATH:-/workspace/data/personlogy.sqlite3}
+      PKS_QUEUE_BACKEND: ${PKS_QUEUE_BACKEND:-sqlite}
+    volumes:
+      - ./data:/workspace/data
 
   web:
     build:

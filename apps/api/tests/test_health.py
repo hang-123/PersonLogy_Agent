@@ -11,8 +11,8 @@ def test_liveness_reports_service() -> None:
     assert response.json()["dependencies"]["gel"] == "not_configured"
 
 
-def test_readiness_exposes_missing_dependency() -> None:
+def test_readiness_accepts_local_persistence_without_gel() -> None:
     client = TestClient(create_app())
     response = client.get("/v1/health/ready")
     assert response.status_code == 200
-    assert response.json()["status"] == "degraded"
+    assert response.json()["status"] == "ok"
