@@ -1,81 +1,42 @@
-
 name: person-knowledge-system
 
 services:
-  postgres:
-    image: postgres:17-alpine
+  gel:
+    image: geldata/gel:7.1
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-knowledge}
-      POSTGRES_USER: ${POSTGRES_USER:-knowledge}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
+      GEL_SERVER_PASSWORD: ${GEL_SERVER_PASSWORD:-local-only-change-me}
     ports:
-      - "5432:5432"
+      - "5656:5656"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  neo4j:
-    image: neo4j:2026.06.0
-    environment:
-      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/local-only-change-me}
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    volumes:
-      - neo4j-data:/data
-      - neo4j-logs:/logs
-    healthcheck:
-      test: ["CMD-SHELL", 'cypher-shell -u neo4j -p "$${NEO4J_AUTH#*/}" "RETURN 1;" || exit 1']
-      interval: 10s
-      timeout: 10s
-      retries: 12
+      - gel-data:/var/lib/gel/data
+      - ./GEL:/workspace/gel
 
   api:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
     env_file:
       - path: .env
         required: false
     environment:
-      PKS_DATABASE_URL: ${PKS_DATABASE_URL:-postgresql+psycopg://knowledge:local-only-change-me@postgres:5432/knowledge}
-      PKS_NEO4J_URI: ${PKS_NEO4J_URI:-bolt://neo4j:7687}
-      PKS_NEO4J_USERNAME: ${PKS_NEO4J_USERNAME:-neo4j}
-      PKS_NEO4J_PASSWORD: ${PKS_NEO4J_PASSWORD:-local-only-change-me}
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      PKS_ENVIRONMENT: ${PKS_ENVIRONMENT:-local}
+      PKS_GEL_DSN: ${PKS_GEL_DSN:-gel://gel:5656/knowledge}
+      # TP-02 currently provides an in-process adapter; use a shared queue in a later task.
+      PKS_QUEUE_BACKEND: ${PKS_QUEUE_BACKEND:-memory}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
-    volumes:
-      - ./apps/api:/workspace
-      - source-data:/data/sources
     depends_on:
-      postgres:
-        condition: service_healthy
+      - gel
 
   worker:
     build:
-      context: ./apps/api
-    env_file:
-      - path: .env
-        required: false
+      context: .
+      dockerfile: apps/worker/Dockerfile
     environment:
-      PKS_DATABASE_URL: ${PKS_DATABASE_URL:-postgresql+psycopg://knowledge:local-only-change-me@postgres:5432/knowledge}
-      PKS_NEO4J_URI: ${PKS_NEO4J_URI:-bolt://neo4j:7687}
-      PKS_NEO4J_USERNAME: ${PKS_NEO4J_USERNAME:-neo4j}
-      PKS_NEO4J_PASSWORD: ${PKS_NEO4J_PASSWORD:-local-only-change-me}
-    command: python -m app.worker
-    volumes:
-      - ./apps/api:/workspace
-      - source-data:/data/sources
+      PKS_GEL_DSN: ${PKS_GEL_DSN:-gel://gel:5656/knowledge}
     depends_on:
-      postgres:
-        condition: service_healthy
-      neo4j:
-        condition: service_started
+      - gel
 
   web:
     build:
@@ -92,10 +53,5 @@ services:
       - api
 
 volumes:
-  postgres-data:
-  neo4j-data:
-  neo4j-logs:
-  source-data:
+  gel-data:
   web-node-modules:
-
-

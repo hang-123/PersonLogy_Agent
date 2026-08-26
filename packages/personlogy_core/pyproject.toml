@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personlogy-core"
+version = "0.1.0"
+description = "Framework-independent domain and application core for PersonLogy"
+requires-python = ">=3.12,<3.13"
+
+[tool.setuptools.packages.find]
+where = ["src"]

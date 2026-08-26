@@ -1,20 +1,18 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
-
-client = TestClient(app)
+from app.main import create_app
 
 
-def test_liveness() -> None:
+def test_liveness_reports_service() -> None:
+    client = TestClient(create_app())
     response = client.get("/v1/health/live")
-
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["service"] == "person-knowledge-api"
+    assert response.json()["dependencies"]["gel"] == "not_configured"
 
 
-def test_openapi_exposes_versioned_health_route() -> None:
-    response = client.get("/openapi.json")
-
+def test_readiness_exposes_missing_dependency() -> None:
+    client = TestClient(create_app())
+    response = client.get("/v1/health/ready")
     assert response.status_code == 200
-    assert "/v1/health/live" in response.json()["paths"]
+    assert response.json()["status"] == "degraded"

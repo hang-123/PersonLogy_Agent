@@ -5,15 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "person-knowledge-api"
 version = "0.1.0"
-description = "Personal knowledge relationship system API and worker"
+description = "Personal knowledge relationship system API"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "alembic>=1.16,<2",
   "fastapi>=0.116,<1",
-  "neo4j>=5.28,<7",
-  "psycopg[binary]>=3.2,<4",
+  "personlogy-core==0.1.0",
   "pydantic-settings>=2.10,<3",
-  "sqlalchemy>=2.0,<3",
   "structlog>=25.4,<26",
   "uvicorn[standard]>=0.35,<1",
 ]
@@ -27,15 +24,15 @@ dev = [
   "ruff>=0.12,<1",
 ]
 
+[tool.uv.sources]
+personlogy-core = { path = "../../packages/personlogy_core", editable = true }
+
 [tool.setuptools.packages.find]
 include = ["app*"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --disable-warnings"
 testpaths = ["tests"]
-markers = [
-  "integration: requires a migrated PostgreSQL test database",
-]
 
 [tool.ruff]
 target-version = "py312"
@@ -47,4 +44,3 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-plugins = ["pydantic.mypy"]

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personlogy-worker"
+version = "0.1.0"
+description = "PersonLogy asynchronous worker"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "personlogy-core==0.1.0",
+  "pydantic-settings>=2.10,<3",
+  "structlog>=25.4,<26",
+]
+
+[tool.uv.sources]
+personlogy-core = { path = "../../packages/personlogy_core", editable = true }
+
+[tool.setuptools.packages.find]
+where = ["src"]

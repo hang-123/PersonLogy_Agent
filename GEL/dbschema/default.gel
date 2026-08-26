@@ -1,3 +1,114 @@
 module default {
+  scalar type SourceKind extending enum<pdf, conversation>;
+  scalar type VerificationStatus extending enum<candidate, machine_checked, human_verified, rejected>;
+  scalar type ReviewDecision extending enum<approved, rejected, revised>;
+  scalar type JobStatus extending enum<queued, running, retrying, succeeded, failed, cancelled>;
 
+  abstract type Timestamped {
+    required created_at: datetime { default := datetime_current(); };
+  };
+
+  type Project extending Timestamped {
+    required name: str;
+    required slug: str { constraint exclusive; };
+  };
+
+  type Source extending Timestamped {
+    required kind: SourceKind;
+    required title: str;
+    required project: Project;
+  };
+
+  type SourceVersion extending Timestamped {
+    required version: int16 { constraint min_value(1); };
+    required content_hash: str;
+    required object_key: str;
+    required source: Source;
+    constraint exclusive on ((.source, .content_hash));
+    constraint exclusive on ((.source, .version));
+  };
+
+  type ContentBlock extending Timestamped {
+    required ordinal: int32 { constraint min_value(0); };
+    required content: str;
+    required content_hash: str;
+    required locator: json { default := <json>{}; };
+    required source_version: SourceVersion;
+    constraint exclusive on ((.source_version, .ordinal));
+  };
+
+  type KnowledgeNode extending Timestamped {
+    required node_type: str;
+    required title: str;
+    required properties: json { default := <json>{}; };
+    required status: VerificationStatus { default := VerificationStatus.candidate; };
+    required project: Project;
+  };
+
+  type Citation extending Timestamped {
+    required quote: str;
+    required locator: json { default := <json>{}; };
+    required content_block: ContentBlock;
+  };
+
+  type Claim extending Timestamped {
+    required statement: str;
+    confidence: float32 {
+      constraint min_value(0);
+      constraint max_value(1);
+    };
+    required status: VerificationStatus { default := VerificationStatus.candidate; };
+    required project: Project;
+    required subject: KnowledgeNode;
+    required multi citations: Citation;
+  };
+
+  type RelationType extending Timestamped {
+    required key: str { constraint exclusive; };
+    required label: str;
+    required description: str { default := ''; };
+    required directional: bool { default := true; };
+  };
+
+  type Relation extending Timestamped {
+    confidence: float32 {
+      constraint min_value(0);
+      constraint max_value(1);
+    };
+    required properties: json { default := <json>{}; };
+    required project: Project;
+    required relation_type: RelationType;
+    required source: KnowledgeNode;
+    required target: KnowledgeNode;
+    required multi citations: Citation;
+  };
+
+  type ReviewRecord extending Timestamped {
+    required target_id: uuid;
+    required reviewer_id: str;
+    required decision: ReviewDecision;
+    required note: str { default := ''; };
+    required before: json { default := <json>{}; };
+    required after: json { default := <json>{}; };
+  };
+
+  type Job extending Timestamped {
+    required kind: str;
+    required idempotency_key: str { constraint exclusive; };
+    required payload: json { default := <json>{}; };
+    required status: JobStatus { default := JobStatus.queued; };
+    required progress: int16 {
+      default := 0;
+      constraint min_value(0);
+      constraint max_value(100);
+    };
+    required stage: str { default := 'queued'; };
+    required attempt: int16 { default := 0; constraint min_value(0); };
+    required max_attempts: int16 { default := 3; constraint min_value(1); };
+    required timeout_seconds: int32 { default := 900; constraint min_value(1); };
+    failure_reason: str;
+    next_attempt_at: datetime;
+    started_at: datetime;
+    finished_at: datetime;
+  };
 }

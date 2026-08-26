@@ -1,13 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from personlogy.shared.errors import DomainValidationError, InvalidStateTransitionError
 
 from app.application.errors import ApplicationError
-from app.domain.ontology import DomainValidationError
 
 
-async def application_error_handler(
-    _: Request, error: Exception
-) -> JSONResponse:
+async def application_error_handler(_: Request, error: Exception) -> JSONResponse:
     if not isinstance(error, ApplicationError):
         raise error
     return JSONResponse(
@@ -16,10 +14,8 @@ async def application_error_handler(
     )
 
 
-async def domain_validation_error_handler(
-    _: Request, error: Exception
-) -> JSONResponse:
-    if not isinstance(error, DomainValidationError):
+async def domain_validation_error_handler(_: Request, error: Exception) -> JSONResponse:
+    if not isinstance(error, (DomainValidationError, InvalidStateTransitionError)):
         raise error
     return JSONResponse(
         status_code=422,
@@ -29,6 +25,5 @@ async def domain_validation_error_handler(
 
 def register_error_handlers(application: FastAPI) -> None:
     application.add_exception_handler(ApplicationError, application_error_handler)
-    application.add_exception_handler(
-        DomainValidationError, domain_validation_error_handler
-    )
+    application.add_exception_handler(DomainValidationError, domain_validation_error_handler)
+    application.add_exception_handler(InvalidStateTransitionError, domain_validation_error_handler)

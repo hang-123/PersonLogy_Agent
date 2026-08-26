@@ -1,1 +1,1 @@
-"""Versioned API routes."""
+"""Shared HTTP route modules."""

@@ -1,2 +1,1 @@
-"""PersonLogy asynchronous worker entry package."""
-
+__version__ = "0.1.0"

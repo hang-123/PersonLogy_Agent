@@ -1,1 +1,1 @@
-"""Cross-cutting application configuration."""
+"""API runtime configuration and logging."""

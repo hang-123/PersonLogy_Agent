@@ -10,10 +10,11 @@ router = APIRouter()
 
 
 class HealthResponse(BaseModel):
-    status: Literal["ok"]
+    status: Literal["ok", "degraded"]
     service: str
     version: str
     environment: str
+    dependencies: dict[str, str]
 
 
 @router.get("/live", response_model=HealthResponse)
@@ -24,10 +25,19 @@ def liveness() -> HealthResponse:
         service="person-knowledge-api",
         version=__version__,
         environment=settings.environment,
+        dependencies=settings.dependency_status(),
     )
 
 
 @router.get("/ready", response_model=HealthResponse)
 def readiness() -> HealthResponse:
-    # Database and projection checks are added with M1 repositories.
-    return liveness()
+    settings = get_settings()
+    dependencies = settings.dependency_status()
+    status: Literal["ok", "degraded"] = "ok" if settings.gel_dsn else "degraded"
+    return HealthResponse(
+        status=status,
+        service="person-knowledge-api",
+        version=__version__,
+        environment=settings.environment,
+        dependencies=dependencies,
+    )

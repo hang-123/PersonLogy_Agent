@@ -1,1 +1,1 @@
-"""HTTP API adapters."""
+"""HTTP API boundary."""

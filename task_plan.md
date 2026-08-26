@@ -1,47 +1,36 @@
-# Task Plan: Candidate 合并与人工审核工作台
+# Task Plan: TP-00、TP-01、TP-02 直接重构
 
 ## Goal
-实现 Candidate 关联已有对象/别名合并命令，并交付可实际操作来源录入、证据创建、候选筛选和审核发布的 Web 工作台，为后续 Neo4j 投影提供稳定 Published 数据入口。
+
+删除被新架构替代的旧实现，完成可启动的工程基础、核心领域模型与 Gel Schema、异步任务编排，并通过测试验证。
 
 ## Phases
-- [x] Phase 1: 复核前端工程、API 契约与 PRD 审核交互
-- [x] Phase 2: 实现后端对象合并命令、对象检索与测试
-- [x] Phase 3: 实现前端 API Client、类型模型与页面信息架构
-- [x] Phase 4: 实现来源录入、Evidence 创建、Candidate 审核交互
-- [x] Phase 5: 执行后端/前端测试、浏览器验收与文档交付
 
-## Key Questions
-1. 如何在不删除历史引用的前提下，把 Object Candidate 合并为已有对象别名？
-2. 审核工作台如何同时呈现来源上下文、候选 Payload、证据门禁和审核动作？
-3. 如何让 PostgreSQL/API 可用而 Neo4j 未启动时，工作台仍能完整运行？
+- [x] Phase 1: 盘点现有代码、入口、依赖、测试和可删除目标
+- [x] Phase 2: 落地 TP-00 工程基础
+- [x] Phase 3: 落地 TP-01 领域模型与 Gel Schema
+- [x] Phase 4: 落地 TP-02 任务状态机与编排端口
+- [x] Phase 5: 删除被替代旧代码并修复引用
+- [x] Phase 6: 运行静态检查、单元测试和启动验证
+- [x] Phase 7: 输出重构报告
 
-## Scope
-- 按类型、规范名和别名检索正式对象
-- Object Candidate 合并为已有对象，追加别名、版本、审计和投影事件
-- React 来源录入、Evidence 创建、Candidate 列表和审核详情
-- 接受、拒绝、合并操作及错误/加载/空状态
-- 响应式布局、无障碍基础与真实 API 联调
+## Decisions
 
-## Non-Goals
-- 本增量不消费图投影事件，不写 Neo4j。
-- 不实现 Claim/Decision、AI 抽取、文件上传或复杂图可视化。
-- 不引入新的前端状态管理框架。
+- 采用模块化单体，不迁移旧目录结构。
+- Domain 不依赖 FastAPI、Gel、MinIO、LLM 或队列实现。
+- Gel Schema 是权威数据模型；TP-01 交付 Schema 和 Repository/UoW 端口。
+- TP-02 交付可测试的内存队列适配器；跨进程持久队列留给后续基础设施任务。
+- 已被替代的 PostgreSQL、Neo4j、Alembic 和招聘领域实现直接删除。
 
-## Design Direction
-- 采用“研究档案台 / editorial intelligence desk”视觉方向：纸张暖灰底、墨色正文、朱砂操作色和结构化证据标签。
-- 强调来源—证据—候选—发布的纵向工作流，而非通用 SaaS 卡片堆叠。
-- 使用现有 Ant Design 组件承载可访问交互，自定义布局、排版和状态语言。
+## Verification
 
-## Decisions Made
-- Neo4j 继续保持可选；API 仅依赖 PostgreSQL。
-- 合并只适用于 Object Candidate，目标对象类型必须一致。
-- 合并通过追加 aliases、版本和审计实现，不创建第二个正式对象。
-- 前端使用原生 fetch 与 React hooks，避免为 P0 引入额外状态库。
-
-## Errors Encountered
-- apply_patch 在 Windows 工作区存在已知 helper_unknown_error；使用受控 UTF-8 写入并执行完整验证。
-- Web 镜像首次 npm install 在 WSL 中耗时约 5 分钟；构建最终成功，后续检查复用缓存镜像。
-- 当前 Docker Compose 版本不支持 run --no-build；移除该参数后使用缓存镜像完成类型检查。
+- `uv run ruff check app tests ../../packages/personlogy_core/src`：通过。
+- `uv run mypy app ../../packages/personlogy_core/src/personlogy`：通过。
+- `uv run pytest`：9 passed。
+- Worker 启动探针打印 `worker_started` 并进入等待循环；主动超时结束。
+- Gel CLI 可用，但本机未初始化 Gel project/server，未执行远端 Schema migration。
+- Docker CLI 未安装，未执行 Compose 启动验证。
 
 ## Status
-**Completed** - Candidate 合并与人工审核工作台已实现并通过前后端、数据库和浏览器验收。
+
+已完成 TP-00～TP-02。后续进入 TP-03 PDF 导入前，应先实现共享持久化队列和 Gel Repository adapter。

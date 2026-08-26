@@ -1,1 +1,1 @@
-"""Application commands, queries, and ports."""
+"""API application-layer errors and adapters."""
