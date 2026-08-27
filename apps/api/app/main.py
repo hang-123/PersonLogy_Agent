@@ -6,7 +6,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import __version__
+from app import __version__, runtime
 from app.api.errors import register_error_handlers
 from app.api.router import api_router
 from app.core.config import get_settings
@@ -24,6 +24,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         queue_backend=settings.queue_backend,
     )
     yield
+    await runtime.shutdown()
     structlog.get_logger().info("application_stopped")
 
 

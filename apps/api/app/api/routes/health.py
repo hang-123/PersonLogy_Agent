@@ -30,11 +30,16 @@ def liveness() -> HealthResponse:
 
 
 @router.get("/ready", response_model=HealthResponse)
-def readiness() -> HealthResponse:
+async def readiness() -> HealthResponse:
     settings = get_settings()
     dependencies = settings.dependency_status()
-    storage_ready = settings.storage_backend != "gel"
-    queue_ready = settings.queue_backend != "gel"
+    gel_ready = True
+    if settings.storage_backend == "gel" or settings.queue_backend == "gel":
+        from app import runtime
+
+        gel_ready = runtime.gel_store is not None and await runtime.gel_store.ping()
+    storage_ready = settings.storage_backend != "gel" or gel_ready
+    queue_ready = settings.queue_backend != "gel" or gel_ready
     status: Literal["ok", "degraded"] = "ok" if storage_ready and queue_ready else "degraded"
     return HealthResponse(
         status=status,

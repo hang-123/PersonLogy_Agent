@@ -4,31 +4,57 @@ import os
 import structlog
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.pdf import PdfPlumberParser
-from personlogy.adapters.sqlite import (
-    SQLiteJobQueue,
-    SQLiteStore,
-    SQLiteUnitOfWorkFactory,
-)
+from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
 from personlogy.application.ingestion import PdfImportService
 from personlogy.application.orchestration import JobService
+from personlogy.ports.queue import JobQueue
+from personlogy.ports.unit_of_work import UnitOfWorkFactory
+
+STORAGE_BACKEND = os.getenv("PKS_STORAGE_BACKEND", "sqlite")
+QUEUE_BACKEND = os.getenv("PKS_QUEUE_BACKEND", STORAGE_BACKEND)
+PDF_STORAGE_ROOT = os.getenv("PKS_PDF_STORAGE_ROOT", "../../data/files")
+PDF_MAX_SIZE_BYTES = int(os.getenv("PKS_PDF_MAX_SIZE_BYTES", str(25 * 1024 * 1024)))
+POLL_INTERVAL = float(os.getenv("PKS_QUEUE_POLL_INTERVAL_SECONDS", "2.0"))
+
+
+def _build_services() -> tuple[UnitOfWorkFactory, JobQueue]:
+    if STORAGE_BACKEND == "gel":
+        from personlogy.adapters.gel import GelJobQueue, GelStore, GelUnitOfWorkFactory
+
+        dsn = os.getenv("PKS_GEL_DSN")
+        if not dsn:
+            raise RuntimeError("PKS_GEL_DSN is required when storage_backend is gel")
+        store = GelStore(dsn)
+        factory: UnitOfWorkFactory = GelUnitOfWorkFactory(store)
+        queue: JobQueue = GelJobQueue(store)
+        return factory, queue
+    if STORAGE_BACKEND == "sqlite":
+        sqlite_store = SQLiteStore(os.getenv("PKS_SQLITE_PATH", "../../data/personlogy.sqlite3"))
+        sqlite_factory = SQLiteUnitOfWorkFactory(sqlite_store)
+        if QUEUE_BACKEND == "sqlite":
+            return sqlite_factory, SQLiteJobQueue(sqlite_store)
+        raise RuntimeError(f"unsupported queue_backend for sqlite storage: {QUEUE_BACKEND}")
+    raise RuntimeError(f"unsupported storage_backend: {STORAGE_BACKEND}")
 
 
 async def run_worker() -> None:
-    database_path = os.getenv("PKS_SQLITE_PATH", "../../data/personlogy.sqlite3")
-    store = SQLiteStore(database_path)
-    queue = SQLiteJobQueue(store)
-    service = JobService(SQLiteUnitOfWorkFactory(store), queue)
+    uow_factory, queue = _build_services()
+    service = JobService(uow_factory, queue)
     pdf_service = PdfImportService(
-        SQLiteUnitOfWorkFactory(store),
+        uow_factory,
         service,
-        LocalFileStorage(os.getenv("PKS_PDF_STORAGE_ROOT", "../../data/files")),
+        LocalFileStorage(PDF_STORAGE_ROOT),
         PdfPlumberParser(),
-        max_size_bytes=int(os.getenv("PKS_PDF_MAX_SIZE_BYTES", str(25 * 1024 * 1024))),
+        max_size_bytes=PDF_MAX_SIZE_BYTES,
     )
     logger = structlog.get_logger()
-    logger.info("worker_started", queue_backend="sqlite", storage_path=database_path)
+    logger.info(
+        "worker_started",
+        storage_backend=STORAGE_BACKEND,
+        queue_backend=QUEUE_BACKEND,
+    )
     while True:
-        job = await service.start_next(timeout_seconds=2.0)
+        job = await service.start_next(timeout_seconds=POLL_INTERVAL)
         if job is None:
             continue
         logger.info("job_claimed", job_id=str(job.id), kind=job.kind, attempt=job.attempt)
