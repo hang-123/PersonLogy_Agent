@@ -1,5 +1,6 @@
 import asyncio
 import os
+from uuid import UUID
 
 import structlog
 from personlogy.adapters.local_files import LocalFileStorage
@@ -64,6 +65,18 @@ async def run_worker() -> None:
                 block_count = await pdf_service.process_pdf_job(job)
                 await service.report_progress(
                     job.id, 90, f"content_blocks_written:{block_count}"
+                )
+                await compilation_service.submit_for_version(
+                    project_id=UUID(str(job.payload["project_id"])),
+                    source_version_id=UUID(str(job.payload["source_version_id"])),
+                )
+            elif job.kind == "knowledge.compile":
+                await service.report_progress(job.id, 20, "compiling_candidates")
+                result = await compilation_service.process_compile_job(job)
+                await service.report_progress(
+                    job.id,
+                    90,
+                    f"governance:{result.governance_status}:review_tasks:{result.review_task_count}",
                 )
             else:
                 await service.report_progress(job.id, 10, "accepted")

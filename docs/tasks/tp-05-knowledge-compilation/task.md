@@ -4,6 +4,9 @@
 
 使用 LLMWiki 方法将 ContentBlock 编译为知识候选和 OKF 表达。
 
+当前首版以 PDF ContentBlock + 本地规则编译器落地，保留 `KnowledgeCompiler` Port
+供后续 LLM Provider 替换。
+
 ## 负责范围
 
 - Prompt 版本管理；
@@ -18,6 +21,11 @@
 - 直接写入正式知识；
 - Schema Migration 执行。
 
+## 当前状态
+
+已完成 PDF-first 本地闭环：解析后的 ContentBlock 会生成候选 Concept、Claim、Relation
+和 Citation，并导出 OKF v0.2 JSON；所有结果保持 candidate 状态，等待后续治理。
+
 ## 验收
 
 - Given 可解析 ContentBlock
@@ -27,4 +35,3 @@
 - Given LLM 返回非法结构
 - When 编译结果校验
 - Then 候选进入失败或待修订状态，不得发布
-

@@ -5,6 +5,8 @@ from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.memory import InMemoryJobQueue, InMemoryStore, InMemoryUnitOfWorkFactory
 from personlogy.adapters.pdf import PdfPlumberParser
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
+from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
+from personlogy.application.governance import GovernanceService
 from personlogy.application.ingestion import ConversationImportService, PdfImportService
 from personlogy.application.orchestration import JobService
 from personlogy.ports.queue import JobQueue
@@ -59,12 +61,10 @@ pdf_import_service = PdfImportService(
     PdfPlumberParser(),
     max_size_bytes=settings.pdf_max_size_bytes,
 )
-
-_shutdown_hooks: list[Callable[[], Awaitable[None]]] = []
-if gel_store is not None:
-    _shutdown_hooks.append(gel_store.aclose)
-
-
-async def shutdown() -> None:
-    for hook in _shutdown_hooks:
-        await hook()
+compilation_service = CompilationService(
+    uow_factory,
+    job_service,
+    DocumentHeuristicCompiler(),
+    LocalFileStorage(settings.pdf_storage_root),
+)
+governance_service = GovernanceService(uow_factory)

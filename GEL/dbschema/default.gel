@@ -1,7 +1,11 @@
 module default {
   scalar type SourceKind extending enum<pdf, conversation>;
-  scalar type VerificationStatus extending enum<candidate, machine_checked, human_verified, rejected>;
+  scalar type VerificationStatus extending enum<candidate, machine_checked, pending_review, needs_revision, human_verified, ready_for_writeback, rejected>;
   scalar type ReviewDecision extending enum<approved, rejected, revised>;
+  scalar type GovernanceRunStatus extending enum<passed, needs_review, rejected>;
+  scalar type GovernanceIssueSeverity extending enum<info, warning, error>;
+  scalar type CandidateKind extending enum<node, claim, relation>;
+  scalar type ReviewTaskStatus extending enum<pending, approved, rejected, revised>;
   scalar type JobStatus extending enum<queued, running, retrying, succeeded, failed, cancelled>;
 
   abstract type Timestamped {
@@ -48,6 +52,7 @@ module default {
   type Citation extending Timestamped {
     required quote: str;
     required locator: json { default := <json>{}; };
+    required metadata: json { default := <json>{}; };
     required content_block: ContentBlock;
   };
 
@@ -58,6 +63,7 @@ module default {
       constraint max_value(1);
     };
     required status: VerificationStatus { default := VerificationStatus.candidate; };
+    required metadata: json { default := <json>{}; };
     required project: Project;
     required subject: KnowledgeNode;
     required multi citations: Citation;
@@ -76,6 +82,8 @@ module default {
       constraint max_value(1);
     };
     required properties: json { default := <json>{}; };
+    required status: VerificationStatus { default := VerificationStatus.candidate; };
+    required metadata: json { default := <json>{}; };
     required project: Project;
     required relation_type: RelationType;
     required source: KnowledgeNode;
@@ -90,6 +98,49 @@ module default {
     required note: str { default := ''; };
     required before: json { default := <json>{}; };
     required after: json { default := <json>{}; };
+  };
+
+  type GovernanceRun extending Timestamped {
+    required project: Project;
+    required task_id: uuid;
+    required rule_version: str;
+    required status: GovernanceRunStatus;
+    required multi candidate_ids: uuid;
+  };
+
+  type GovernanceIssue extending Timestamped {
+    required run: GovernanceRun;
+    required candidate_id: uuid;
+    required candidate_kind: CandidateKind;
+    required code: str;
+    required message: str;
+    required severity: GovernanceIssueSeverity;
+  };
+
+  type DuplicateGroup extending Timestamped {
+    required project: Project;
+    required multi candidate_ids: uuid;
+    required basis: str;
+  };
+
+  type ConflictRecord extending Timestamped {
+    required project: Project;
+    required multi candidate_ids: uuid;
+    required basis: str;
+    required status: str { default := 'open'; };
+  };
+
+  type ReviewTask extending Timestamped {
+    required run: GovernanceRun;
+    required candidate_id: uuid;
+    required candidate_kind: CandidateKind;
+    required status: ReviewTaskStatus { default := ReviewTaskStatus.pending; };
+    reviewer_id: str;
+    reason: str;
+    required before: json { default := <json>{}; };
+    required after: json { default := <json>{}; };
+    required version: int32 { default := 1; constraint min_value(1); };
+    reviewed_at: datetime;
   };
 
   type Job extending Timestamped {

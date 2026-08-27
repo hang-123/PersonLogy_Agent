@@ -12,8 +12,17 @@ from types import TracebackType
 from typing import cast
 from uuid import UUID
 
+from personlogy.domain.governance.models import (
+    CandidateKind,
+    ConflictRecord,
+    DuplicateGroup,
+    GovernanceIssue,
+    GovernanceRun,
+    ReviewTask,
+    ReviewTaskStatus,
+)
 from personlogy.domain.job import Job, JobStatus
-from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode
+from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode, VerificationStatus
 from personlogy.domain.relation.models import Relation, RelationType
 from personlogy.domain.source.conversation import Conversation, ConversationMessage
 from personlogy.domain.source.models import (
@@ -24,7 +33,12 @@ from personlogy.domain.source.models import (
     SourceVersion,
 )
 from personlogy.ports.queue import JobQueue
-from personlogy.ports.repositories import JobRepository, KnowledgeRepository, SourceRepository
+from personlogy.ports.repositories import (
+    GovernanceRepository,
+    JobRepository,
+    KnowledgeRepository,
+    SourceRepository,
+)
 from personlogy.ports.unit_of_work import UnitOfWork
 from personlogy.shared.errors import DomainValidationError
 
@@ -99,7 +113,8 @@ CREATE TABLE IF NOT EXISTS citation (
     id TEXT PRIMARY KEY,
     content_block_id TEXT NOT NULL REFERENCES content_block(id),
     quote TEXT NOT NULL,
-    locator TEXT NOT NULL
+    locator TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS claim (
     id TEXT PRIMARY KEY,
@@ -108,7 +123,8 @@ CREATE TABLE IF NOT EXISTS claim (
     statement TEXT NOT NULL,
     confidence REAL,
     status TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS claim_citation (
     claim_id TEXT NOT NULL REFERENCES claim(id),
@@ -130,12 +146,62 @@ CREATE TABLE IF NOT EXISTS relation (
     target_id TEXT NOT NULL REFERENCES knowledge_node(id),
     properties TEXT NOT NULL,
     confidence REAL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'candidate',
+    metadata TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS relation_citation (
     relation_id TEXT NOT NULL REFERENCES relation(id),
     citation_id TEXT NOT NULL REFERENCES citation(id),
     PRIMARY KEY(relation_id, citation_id)
+);
+CREATE TABLE IF NOT EXISTS governance_run (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES project(id),
+    task_id TEXT NOT NULL,
+    rule_version TEXT NOT NULL,
+    status TEXT NOT NULL,
+    candidate_ids TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS governance_issue (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES governance_run(id),
+    candidate_id TEXT NOT NULL,
+    candidate_kind TEXT NOT NULL,
+    code TEXT NOT NULL,
+    message TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS duplicate_group (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES project(id),
+    candidate_ids TEXT NOT NULL,
+    basis TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conflict_record (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES project(id),
+    candidate_ids TEXT NOT NULL,
+    basis TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS review_task (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES governance_run(id),
+    candidate_id TEXT NOT NULL,
+    candidate_kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reviewer_id TEXT,
+    reason TEXT,
+    before TEXT NOT NULL,
+    after TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    reviewed_at TEXT
 );
 CREATE TABLE IF NOT EXISTS job (
     id TEXT PRIMARY KEY,
@@ -200,6 +266,24 @@ def _id(value: UUID) -> str:
     return str(value)
 
 
+def _ensure_metadata_columns(connection: sqlite3.Connection) -> None:
+    """Upgrade databases created before P5 metadata was introduced."""
+    for table in ("citation", "claim", "relation"):
+        columns = {
+            row["name"]
+            for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if "metadata" not in columns:
+            connection.execute(
+                f"ALTER TABLE {table} ADD COLUMN metadata TEXT NOT NULL DEFAULT '{{}}'"
+            )
+        if table == "relation" and "status" not in columns:
+            connection.execute(
+                "ALTER TABLE relation ADD COLUMN status TEXT NOT NULL DEFAULT 'candidate'"
+            )
+    connection.commit()
+
+
 class SQLiteStore:
     """Database handle shared by UoW and queue instances."""
 
@@ -210,6 +294,7 @@ class SQLiteStore:
         connection = self.connect()
         try:
             connection.executescript(SCHEMA)
+            _ensure_metadata_columns(connection)
         finally:
             connection.close()
 
@@ -478,14 +563,38 @@ class SQLiteKnowledgeRepository:
         except sqlite3.IntegrityError as error:
             raise DomainValidationError("knowledge node project does not exist") from error
 
+    async def get_node(self, node_id: UUID) -> KnowledgeNode | None:
+        row = self._connection.execute(
+            "SELECT * FROM knowledge_node WHERE id = ?", (_id(node_id),)
+        ).fetchone()
+        if row is None:
+            return None
+        return KnowledgeNode(
+            project_id=UUID(row["project_id"]),
+            node_type=row["node_type"],
+            title=row["title"],
+            properties=_mapping(row["properties"]),
+            status=VerificationStatus(row["status"]),
+            id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+        )
+
+    async def save_node(self, node: KnowledgeNode) -> None:
+        cursor = self._connection.execute(
+            "UPDATE knowledge_node SET properties = ?, status = ? WHERE id = ?",
+            (_json(node.properties), node.status.value, _id(node.id)),
+        )
+        if cursor.rowcount != 1:
+            raise DomainValidationError("knowledge node does not exist")
+
     async def add_citation(self, citation: Citation) -> None:
         try:
             self._connection.execute(
-                "INSERT INTO citation (id, content_block_id, quote, locator) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO citation (id, content_block_id, quote, locator, metadata) "
+                "VALUES (?, ?, ?, ?, ?)",
                 (
                     _id(citation.id), _id(citation.content_block_id), citation.quote,
-                    _json(citation.locator),
+                    _json(citation.locator), _json(citation.metadata),
                 ),
             )
         except sqlite3.IntegrityError as error:
@@ -495,8 +604,8 @@ class SQLiteKnowledgeRepository:
         try:
             self._connection.execute(
                 """INSERT INTO claim
-                   (id, project_id, subject_id, statement, confidence, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (id, project_id, subject_id, statement, confidence, status, created_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _id(claim.id),
                     _id(claim.project_id),
@@ -505,6 +614,7 @@ class SQLiteKnowledgeRepository:
                     claim.confidence,
                     claim.status.value,
                     _timestamp(claim.created_at),
+                    _json(claim.metadata),
                 ),
             )
             self._connection.executemany(
@@ -516,13 +626,46 @@ class SQLiteKnowledgeRepository:
                 "claim project, subject, or citation does not exist"
             ) from error
 
+    async def get_claim(self, claim_id: UUID) -> Claim | None:
+        row = self._connection.execute(
+            "SELECT * FROM claim WHERE id = ?", (_id(claim_id),)
+        ).fetchone()
+        if row is None:
+            return None
+        citation_rows = self._connection.execute(
+            """SELECT citation.* FROM citation
+               JOIN claim_citation ON claim_citation.citation_id = citation.id
+               WHERE claim_citation.claim_id = ? ORDER BY citation.rowid""",
+            (_id(claim_id),),
+        ).fetchall()
+        citations = tuple(_citation_from_row(item) for item in citation_rows)
+        return Claim(
+            project_id=UUID(row["project_id"]),
+            subject_id=UUID(row["subject_id"]),
+            statement=row["statement"],
+            citations=citations,
+            confidence=row["confidence"],
+            status=VerificationStatus(row["status"]),
+            id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+            metadata=_mapping(row["metadata"]),
+        )
+
+    async def save_claim(self, claim: Claim) -> None:
+        cursor = self._connection.execute(
+            "UPDATE claim SET status = ?, metadata = ? WHERE id = ?",
+            (claim.status.value, _json(claim.metadata), _id(claim.id)),
+        )
+        if cursor.rowcount != 1:
+            raise DomainValidationError("claim does not exist")
+
     async def add_relation(self, relation: Relation) -> None:
         try:
             self._connection.execute(
                 """INSERT INTO relation
                    (id, project_id, relation_type, source_id, target_id, properties,
-                    confidence, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    confidence, created_at, status, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _id(relation.id),
                     _id(relation.project_id),
@@ -532,6 +675,8 @@ class SQLiteKnowledgeRepository:
                     _json(relation.properties),
                     relation.confidence,
                     _timestamp(relation.created_at),
+                    relation.status.value,
+                    _json(relation.metadata),
                 ),
             )
             self._connection.executemany(
@@ -542,6 +687,45 @@ class SQLiteKnowledgeRepository:
             raise DomainValidationError(
                 "relation type, endpoints, project, or citation does not exist"
             ) from error
+
+    async def get_relation(self, relation_id: UUID) -> Relation | None:
+        row = self._connection.execute(
+            "SELECT * FROM relation WHERE id = ?", (_id(relation_id),)
+        ).fetchone()
+        if row is None:
+            return None
+        citation_rows = self._connection.execute(
+            "SELECT citation_id FROM relation_citation WHERE relation_id = ?",
+            (_id(relation_id),),
+        ).fetchall()
+        return Relation(
+            project_id=UUID(row["project_id"]),
+            relation_type=row["relation_type"],
+            source_id=UUID(row["source_id"]),
+            target_id=UUID(row["target_id"]),
+            citation_ids=tuple(UUID(item["citation_id"]) for item in citation_rows),
+            properties=_mapping(row["properties"]),
+            confidence=row["confidence"],
+            id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+            status=VerificationStatus(row["status"]),
+            metadata=_mapping(row["metadata"]),
+        )
+
+    async def save_relation(self, relation: Relation) -> None:
+        cursor = self._connection.execute(
+            "UPDATE relation SET properties = ?, confidence = ?, status = ?, metadata = ? "
+            "WHERE id = ?",
+            (
+                _json(relation.properties),
+                relation.confidence,
+                relation.status.value,
+                _json(relation.metadata),
+                _id(relation.id),
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise DomainValidationError("relation does not exist")
 
     async def add_relation_type(self, relation_type: RelationType) -> None:
         try:
@@ -559,6 +743,181 @@ class SQLiteKnowledgeRepository:
             )
         except sqlite3.IntegrityError as error:
             raise DomainValidationError("relation type key already exists") from error
+
+    async def get_relation_type(self, key: str) -> RelationType | None:
+        row = self._connection.execute(
+            "SELECT key, label, description, directional FROM relation_type WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return None
+        return RelationType(
+            key=row["key"],
+            label=row["label"],
+            description=row["description"],
+            directional=bool(row["directional"]),
+        )
+
+
+class SQLiteGovernanceRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    async def add_run(self, run: GovernanceRun) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO governance_run
+                   (id, project_id, task_id, rule_version, status, candidate_ids, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(run.id),
+                    _id(run.project_id),
+                    _id(run.task_id),
+                    run.rule_version,
+                    run.status.value,
+                    _json_value([str(item) for item in run.candidate_ids]),
+                    _timestamp(run.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError("governance run project does not exist") from error
+
+    async def add_issue(self, issue: GovernanceIssue) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO governance_issue
+                   (id, run_id, candidate_id, candidate_kind, code, message, severity, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(issue.id),
+                    _id(issue.run_id),
+                    _id(issue.candidate_id),
+                    issue.candidate_kind.value,
+                    issue.code,
+                    issue.message,
+                    issue.severity.value,
+                    _timestamp(issue.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError("governance issue run does not exist") from error
+
+    async def add_duplicate_group(self, group: DuplicateGroup) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO duplicate_group
+                   (id, project_id, candidate_ids, basis, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    _id(group.id),
+                    _id(group.project_id),
+                    _json_value([str(item) for item in group.candidate_ids]),
+                    group.basis,
+                    _timestamp(group.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError("duplicate group project does not exist") from error
+
+    async def add_conflict(self, conflict: ConflictRecord) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO conflict_record
+                   (id, project_id, candidate_ids, basis, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(conflict.id),
+                    _id(conflict.project_id),
+                    _json_value([str(item) for item in conflict.candidate_ids]),
+                    conflict.basis,
+                    conflict.status,
+                    _timestamp(conflict.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError("conflict project does not exist") from error
+
+    async def add_review_task(self, task: ReviewTask) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO review_task
+                   (id, run_id, candidate_id, candidate_kind, status, reviewer_id, reason,
+                    before, after, version, created_at, reviewed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(task.id),
+                    _id(task.run_id),
+                    _id(task.candidate_id),
+                    task.candidate_kind.value,
+                    task.status.value,
+                    task.reviewer_id,
+                    task.reason,
+                    _json(task.before),
+                    _json(task.after),
+                    task.version,
+                    _timestamp(task.created_at),
+                    _timestamp(task.reviewed_at) if task.reviewed_at else None,
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError("review task governance run does not exist") from error
+
+    async def get_review_task(self, task_id: UUID) -> ReviewTask | None:
+        row = self._connection.execute(
+            "SELECT * FROM review_task WHERE id = ?", (_id(task_id),)
+        ).fetchone()
+        return _review_task_from_row(row) if row is not None else None
+
+    async def save_review_task(self, task: ReviewTask) -> None:
+        cursor = self._connection.execute(
+            """UPDATE review_task SET status = ?, reviewer_id = ?, reason = ?, before = ?,
+               after = ?, version = ?, reviewed_at = ? WHERE id = ?""",
+            (
+                task.status.value,
+                task.reviewer_id,
+                task.reason,
+                _json(task.before),
+                _json(task.after),
+                task.version,
+                _timestamp(task.reviewed_at) if task.reviewed_at else None,
+                _id(task.id),
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise DomainValidationError("review task does not exist")
+
+    async def list_review_tasks(self, *, limit: int = 100) -> list[ReviewTask]:
+        rows = self._connection.execute(
+            "SELECT * FROM review_task ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [_review_task_from_row(row) for row in rows]
+
+
+def _review_task_from_row(row: sqlite3.Row) -> ReviewTask:
+    return ReviewTask(
+        run_id=UUID(row["run_id"]),
+        candidate_id=UUID(row["candidate_id"]),
+        candidate_kind=CandidateKind(row["candidate_kind"]),
+        status=ReviewTaskStatus(row["status"]),
+        reviewer_id=row["reviewer_id"],
+        reason=row["reason"],
+        before=_mapping(row["before"]),
+        after=_mapping(row["after"]),
+        version=row["version"],
+        id=UUID(row["id"]),
+        created_at=_required_datetime(row["created_at"]),
+        reviewed_at=_datetime(row["reviewed_at"]),
+    )
+
+
+def _citation_from_row(row: sqlite3.Row) -> Citation:
+    return Citation(
+        content_block_id=UUID(row["content_block_id"]),
+        quote=row["quote"],
+        locator=_mapping(row["locator"]),
+        id=UUID(row["id"]),
+        metadata=_mapping(row["metadata"]),
+    )
 
 
 class SQLiteJobRepository:
@@ -652,6 +1011,7 @@ class SQLiteUnitOfWork:
         self._connection.execute("BEGIN")
         self.sources: SourceRepository = SQLiteSourceRepository(self._connection)
         self.knowledge: KnowledgeRepository = SQLiteKnowledgeRepository(self._connection)
+        self.governance: GovernanceRepository = SQLiteGovernanceRepository(self._connection)
         self.jobs: JobRepository = SQLiteJobRepository(self._connection)
         self._committed = False
 

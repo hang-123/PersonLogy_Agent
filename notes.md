@@ -1,13 +1,26 @@
-# Notes: TP-00～TP-02 重构
+# Notes: P6 governance and review
 
-## Findings
+## Sources
 
-旧 API 将 FastAPI、SQLAlchemy/PostgreSQL、Neo4j 投影和招聘领域对象直接耦合在 `apps/api/app` 中，无法作为个人知识系统的稳定核心。新实现将领域实体、状态机、端口和内存适配器放入 `packages/personlogy_core`，API 只负责 HTTP 装配。
+### Local repository
+- P5 已提供 PDF → ContentBlock → knowledge.compile → Concept/Claim/Relation/Citation + OKF。
+- 当前知识对象已有 candidate、machine_checked、human_verified、rejected 状态；P6 需要补齐 pending_review / needs_revision / ready_for_writeback 或明确等价状态。
+- 当前 GEL Schema 已有 ReviewRecord，但 Python/SQLite 治理对象尚未落地。
 
-## Deletion Log
+## Synthesized Findings
 
-删除了旧 API 领域/基础设施模块、旧测试、Alembic migrations、PostgreSQL 初始化脚本、Neo4j 约束及占位 Worker。删除前已检查引用，`apps`、`packages`、`GEL` 和 Compose 中无旧 SQLAlchemy/Neo4j/PostgreSQL 运行时代码残留。
+### P6 implementation decision
+- P6 首轮交付机器治理、GovernanceRun、GovernanceIssue、Duplicate/Conflict 标记和 ReviewTask。
+- 机器治理通过后仍进入人工审核；不存在“结构合法即自动回写”。
+- 先用规则检测精确重复和保守的文本冲突；语义去重留出接口，不在本轮伪装成已完成。
 
-## Known Follow-up
+### P6 implementation result
+- P5 编译任务现在在同一事务中写入候选与治理记录，默认结果为 `needs_review`。
+- 每个节点、Claim、Relation 都生成一个 ReviewTask；批准后对应候选变为 `human_verified`，驳回为 `rejected`，修改为 `needs_revision`。
+- 新增 API：`GET /v1/review-tasks` 和 `POST /v1/review-tasks/{task_id}/decision`。
+- 旧 SQLite 数据库会自动补齐 Relation status 和治理表。
 
-当前 API/Worker 的 TP-02 适配器是进程内内存实现，适合单元测试和本地骨架，不承担跨进程可靠投递。TP-03 之前需要增加基于 Gel 的 Job Repository/Queue adapter，或明确引入独立队列服务；不能把内存队列用于生产部署。
+### Integration decisions
+- GEL 暂不接入当前运行时；SQLite + 本地文件继续作为可运行替身。
+- P5 Worker 完成编译后提交/执行治理任务，治理结果和 ReviewTask 仍写入本地库。
+- 真实向量/LLM 语义治理只通过 Port 接入，不改变治理状态机和审核边界。
