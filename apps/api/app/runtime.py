@@ -5,6 +5,7 @@ from personlogy.adapters.memory import InMemoryJobQueue, InMemoryStore, InMemory
 from personlogy.adapters.pdf import PdfPlumberParser
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
 from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
+from personlogy.application.governance import GovernanceService
 from personlogy.application.ingestion import ConversationImportService, PdfImportService
 from personlogy.application.orchestration import JobService
 from personlogy.ports.queue import JobQueue
@@ -50,3 +51,4 @@ compilation_service = CompilationService(
     DocumentHeuristicCompiler(),
     LocalFileStorage(settings.pdf_storage_root),
 )
+governance_service = GovernanceService(uow_factory)

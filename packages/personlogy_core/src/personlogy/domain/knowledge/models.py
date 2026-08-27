@@ -9,7 +9,10 @@ from personlogy.shared.errors import DomainValidationError
 class VerificationStatus(StrEnum):
     CANDIDATE = "candidate"
     MACHINE_CHECKED = "machine_checked"
+    PENDING_REVIEW = "pending_review"
+    NEEDS_REVISION = "needs_revision"
     HUMAN_VERIFIED = "human_verified"
+    READY_FOR_WRITEBACK = "ready_for_writeback"
     REJECTED = "rejected"
 
 

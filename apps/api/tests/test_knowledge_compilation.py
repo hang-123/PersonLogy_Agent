@@ -6,7 +6,9 @@ from uuid import UUID
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
 from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
+from personlogy.application.governance import GovernanceService
 from personlogy.application.orchestration import JobService
+from personlogy.domain.governance.models import ReviewTaskStatus
 from personlogy.domain.source.models import ContentBlock, Project, Source, SourceKind, SourceVersion
 
 
@@ -63,6 +65,8 @@ async def _test_compilation_service_persists_candidates_and_okf(tmp_path: Path) 
 
     assert result.claim_count == 1
     assert result.citation_count == 1
+    assert result.governance_status == "needs_review"
+    assert result.review_task_count == 2
     assert result.okf_object_key.endswith(f"/{job.id}.okf.json")
     okf = json.loads((tmp_path / "files" / result.okf_object_key).read_text(encoding="utf-8"))
     assert okf["provenance"]["task_id"] == str(job.id)
@@ -76,3 +80,20 @@ async def _test_compilation_service_persists_candidates_and_okf(tmp_path: Path) 
         }
     assert counts == {"knowledge_node": 1, "citation": 1, "claim": 1}
     assert UUID(str(job.payload["source_version_id"])) == version.id
+
+    governance = GovernanceService(factory)
+    tasks = await governance.list_review_tasks()
+    claim_task = next(task for task in tasks if task.candidate_kind.value == "claim")
+    updated_task = await governance.decide_review_task(
+        claim_task.id,
+        decision=ReviewTaskStatus.APPROVED,
+        reviewer_id="local-reviewer",
+        reason="source is clear; allow the next writeback stage",
+        expected_version=claim_task.version,
+    )
+    assert updated_task.status is ReviewTaskStatus.APPROVED
+
+    async with factory() as uow:
+        claim = await uow.knowledge.get_claim(claim_task.candidate_id)
+    assert claim is not None
+    assert claim.status.value == "human_verified"

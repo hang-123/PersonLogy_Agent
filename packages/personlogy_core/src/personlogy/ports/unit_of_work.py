@@ -1,12 +1,18 @@
 from types import TracebackType
 from typing import Protocol, Self
 
-from personlogy.ports.repositories import JobRepository, KnowledgeRepository, SourceRepository
+from personlogy.ports.repositories import (
+    GovernanceRepository,
+    JobRepository,
+    KnowledgeRepository,
+    SourceRepository,
+)
 
 
 class UnitOfWork(Protocol):
     sources: SourceRepository
     knowledge: KnowledgeRepository
+    governance: GovernanceRepository
     jobs: JobRepository
 
     async def __aenter__(self) -> Self: ...

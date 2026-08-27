@@ -55,7 +55,9 @@ async def run_worker() -> None:
                 await service.report_progress(job.id, 20, "compiling_candidates")
                 result = await compilation_service.process_compile_job(job)
                 await service.report_progress(
-                    job.id, 90, f"candidates_written:{result.claim_count}"
+                    job.id,
+                    90,
+                    f"governance:{result.governance_status}:review_tasks:{result.review_task_count}",
                 )
             else:
                 await service.report_progress(job.id, 10, "accepted")

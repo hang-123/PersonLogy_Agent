@@ -1,21 +1,26 @@
-# Notes: P5 PDF-first integration
+# Notes: P6 governance and review
 
 ## Sources
 
 ### Local repository
-- P3 已提供 PDF 上传、SourceVersion、ContentBlock、SQLite 和本地文件存储。
-- P5 原先只有领域模型和空的 compilation 模块。
+- P5 已提供 PDF → ContentBlock → knowledge.compile → Concept/Claim/Relation/Citation + OKF。
+- 当前知识对象已有 candidate、machine_checked、human_verified、rejected 状态；P6 需要补齐 pending_review / needs_revision / ready_for_writeback 或明确等价状态。
+- 当前 GEL Schema 已有 ReviewRecord，但 Python/SQLite 治理对象尚未落地。
 
 ## Synthesized Findings
 
-### Current implementation
-- 新增 `KnowledgeCompiler` Port、`DocumentHeuristicCompiler` 和 `CompilationService`。
-- PDF 解析成功后幂等创建 `knowledge.compile` 任务。
-- 编译任务校验候选的来源块、节点端点和 Citation 关系，再写入 SQLite。
-- 生成 OKF v0.2 JSON；候选保持 `candidate`，不直接发布。
-- Citation、Claim、Relation 增加 metadata，保留 Prompt、模型、任务和生成时间。
+### P6 implementation decision
+- P6 首轮交付机器治理、GovernanceRun、GovernanceIssue、Duplicate/Conflict 标记和 ReviewTask。
+- 机器治理通过后仍进入人工审核；不存在“结构合法即自动回写”。
+- 先用规则检测精确重复和保守的文本冲突；语义去重留出接口，不在本轮伪装成已完成。
+
+### P6 implementation result
+- P5 编译任务现在在同一事务中写入候选与治理记录，默认结果为 `needs_review`。
+- 每个节点、Claim、Relation 都生成一个 ReviewTask；批准后对应候选变为 `human_verified`，驳回为 `rejected`，修改为 `needs_revision`。
+- 新增 API：`GET /v1/review-tasks` 和 `POST /v1/review-tasks/{task_id}/decision`。
+- 旧 SQLite 数据库会自动补齐 Relation status 和治理表。
 
 ### Integration decisions
-- GEL 暂不接入当前运行时；SQLite + 本地文件是当前可运行替身。
-- 未来 LLM 只需实现 `KnowledgeCompiler` Port，应用层不绑定模型供应商。
-- OKF Bundle 和原始 PDF 共用 `ObjectStorage` Port，未来可换 MinIO/S3。
+- GEL 暂不接入当前运行时；SQLite + 本地文件继续作为可运行替身。
+- P5 Worker 完成编译后提交/执行治理任务，治理结果和 ReviewTask 仍写入本地库。
+- 真实向量/LLM 语义治理只通过 Port 接入，不改变治理状态机和审核边界。

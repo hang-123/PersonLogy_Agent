@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from personlogy.domain.knowledge.models import VerificationStatus
 from personlogy.shared.errors import DomainValidationError
 
 INITIAL_RELATION_TYPES = (
@@ -38,6 +39,7 @@ class Relation:
     confidence: float | None = None
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    status: VerificationStatus = VerificationStatus.CANDIDATE
     metadata: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

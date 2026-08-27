@@ -7,8 +7,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from uuid import UUID
 
+from personlogy.application.governance import GovernanceEvaluator
 from personlogy.application.orchestration import JobService
+from personlogy.domain.governance.models import GovernanceRunStatus
 from personlogy.domain.job import Job
+from personlogy.domain.knowledge.models import VerificationStatus
 from personlogy.domain.source.models import ContentBlock
 from personlogy.ports.compilation import CompilationBundle, KnowledgeCompiler
 from personlogy.ports.ingestion import ObjectStorage
@@ -27,6 +30,10 @@ class CompilationResult:
     okf_object_key: str
     prompt_version: str
     model_name: str
+    governance_status: str
+    governance_run_id: UUID
+    review_task_count: int
+    issue_count: int
 
 
 class CompilationService:
@@ -36,11 +43,13 @@ class CompilationService:
         job_service: JobService,
         compiler: KnowledgeCompiler,
         okf_storage: ObjectStorage,
+        governance_evaluator: GovernanceEvaluator | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._job_service = job_service
         self._compiler = compiler
         self._okf_storage = okf_storage
+        self._governance_evaluator = governance_evaluator or GovernanceEvaluator()
 
     async def submit_for_version(
         self, *, project_id: UUID, source_version_id: UUID
@@ -69,6 +78,12 @@ class CompilationService:
 
         bundle = self._compiler.compile(project_id=project_id, blocks=blocks)
         self._validate_bundle(bundle, project_id, blocks)
+        evaluation = self._governance_evaluator.evaluate(
+            project_id=project_id,
+            task_id=job.id,
+            bundle=bundle,
+        )
+        bundle = _apply_governance(bundle, evaluation.run.status)
         metadata = {
             "task_id": str(job.id),
             "prompt_version": bundle.prompt_version,
@@ -94,6 +109,15 @@ class CompilationService:
                     await uow.knowledge.add_relation_type(relation_type)
             for relation in bundle.relations:
                 await uow.knowledge.add_relation(relation)
+            await uow.governance.add_run(evaluation.run)
+            for issue in evaluation.issues:
+                await uow.governance.add_issue(issue)
+            for group in evaluation.duplicate_groups:
+                await uow.governance.add_duplicate_group(group)
+            for conflict in evaluation.conflicts:
+                await uow.governance.add_conflict(conflict)
+            for review_task in evaluation.review_tasks:
+                await uow.governance.add_review_task(review_task)
             await uow.commit()
 
         return CompilationResult(
@@ -106,6 +130,10 @@ class CompilationService:
             okf_object_key=okf_key,
             prompt_version=bundle.prompt_version,
             model_name=bundle.model_name,
+            governance_status=evaluation.run.status.value,
+            governance_run_id=evaluation.run.id,
+            review_task_count=len(evaluation.review_tasks),
+            issue_count=len(evaluation.issues),
         )
 
     @staticmethod
@@ -175,6 +203,28 @@ def _with_metadata(
         relations=relations,
         okf=okf,
     )
+
+
+def _apply_governance(
+    bundle: CompilationBundle, status: GovernanceRunStatus
+) -> CompilationBundle:
+    candidate_status = (
+        VerificationStatus.REJECTED
+        if status is GovernanceRunStatus.REJECTED
+        else VerificationStatus.MACHINE_CHECKED
+    )
+    nodes = tuple(replace(node, status=candidate_status) for node in bundle.nodes)
+    claims = tuple(replace(claim, status=candidate_status) for claim in bundle.claims)
+    relations = tuple(replace(relation, status=candidate_status) for relation in bundle.relations)
+    okf = {
+        **bundle.okf,
+        "governance": {
+            "status": status.value,
+            "rule_version": "p6-rules-v1",
+            "review_required": status is GovernanceRunStatus.NEEDS_REVIEW,
+        },
+    }
+    return replace(bundle, nodes=nodes, claims=claims, relations=relations, okf=okf)
 
 
 def _as_dict(value: object) -> dict[str, object]:
