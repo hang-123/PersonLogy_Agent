@@ -1,10 +1,11 @@
 import asyncio
+from uuid import UUID
 
 import structlog
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.runtime import job_service, pdf_import_service
+from app.runtime import compilation_service, job_service, pdf_import_service
 
 
 async def run_worker() -> None:
@@ -23,6 +24,16 @@ async def run_worker() -> None:
                 block_count = await pdf_import_service.process_pdf_job(job)
                 await job_service.report_progress(
                     job.id, 90, f"content_blocks_written:{block_count}"
+                )
+                await compilation_service.submit_for_version(
+                    project_id=UUID(str(job.payload["project_id"])),
+                    source_version_id=UUID(str(job.payload["source_version_id"])),
+                )
+            elif job.kind == "knowledge.compile":
+                await job_service.report_progress(job.id, 20, "compiling_candidates")
+                result = await compilation_service.process_compile_job(job)
+                await job_service.report_progress(
+                    job.id, 90, f"candidates_written:{result.claim_count}"
                 )
             else:
                 await job_service.report_progress(job.id, 10, "accepted")

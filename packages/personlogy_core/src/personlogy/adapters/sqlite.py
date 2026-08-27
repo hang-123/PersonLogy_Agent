@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS citation (
     id TEXT PRIMARY KEY,
     content_block_id TEXT NOT NULL REFERENCES content_block(id),
     quote TEXT NOT NULL,
-    locator TEXT NOT NULL
+    locator TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS claim (
     id TEXT PRIMARY KEY,
@@ -108,7 +109,8 @@ CREATE TABLE IF NOT EXISTS claim (
     statement TEXT NOT NULL,
     confidence REAL,
     status TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS claim_citation (
     claim_id TEXT NOT NULL REFERENCES claim(id),
@@ -130,7 +132,8 @@ CREATE TABLE IF NOT EXISTS relation (
     target_id TEXT NOT NULL REFERENCES knowledge_node(id),
     properties TEXT NOT NULL,
     confidence REAL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS relation_citation (
     relation_id TEXT NOT NULL REFERENCES relation(id),
@@ -200,6 +203,20 @@ def _id(value: UUID) -> str:
     return str(value)
 
 
+def _ensure_metadata_columns(connection: sqlite3.Connection) -> None:
+    """Upgrade databases created before P5 metadata was introduced."""
+    for table in ("citation", "claim", "relation"):
+        columns = {
+            row["name"]
+            for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if "metadata" not in columns:
+            connection.execute(
+                f"ALTER TABLE {table} ADD COLUMN metadata TEXT NOT NULL DEFAULT '{{}}'"
+            )
+    connection.commit()
+
+
 class SQLiteStore:
     """Database handle shared by UoW and queue instances."""
 
@@ -210,6 +227,7 @@ class SQLiteStore:
         connection = self.connect()
         try:
             connection.executescript(SCHEMA)
+            _ensure_metadata_columns(connection)
         finally:
             connection.close()
 
@@ -481,11 +499,11 @@ class SQLiteKnowledgeRepository:
     async def add_citation(self, citation: Citation) -> None:
         try:
             self._connection.execute(
-                "INSERT INTO citation (id, content_block_id, quote, locator) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO citation (id, content_block_id, quote, locator, metadata) "
+                "VALUES (?, ?, ?, ?, ?)",
                 (
                     _id(citation.id), _id(citation.content_block_id), citation.quote,
-                    _json(citation.locator),
+                    _json(citation.locator), _json(citation.metadata),
                 ),
             )
         except sqlite3.IntegrityError as error:
@@ -495,8 +513,8 @@ class SQLiteKnowledgeRepository:
         try:
             self._connection.execute(
                 """INSERT INTO claim
-                   (id, project_id, subject_id, statement, confidence, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (id, project_id, subject_id, statement, confidence, status, created_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _id(claim.id),
                     _id(claim.project_id),
@@ -505,6 +523,7 @@ class SQLiteKnowledgeRepository:
                     claim.confidence,
                     claim.status.value,
                     _timestamp(claim.created_at),
+                    _json(claim.metadata),
                 ),
             )
             self._connection.executemany(
@@ -521,8 +540,8 @@ class SQLiteKnowledgeRepository:
             self._connection.execute(
                 """INSERT INTO relation
                    (id, project_id, relation_type, source_id, target_id, properties,
-                    confidence, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    confidence, created_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _id(relation.id),
                     _id(relation.project_id),
@@ -532,6 +551,7 @@ class SQLiteKnowledgeRepository:
                     _json(relation.properties),
                     relation.confidence,
                     _timestamp(relation.created_at),
+                    _json(relation.metadata),
                 ),
             )
             self._connection.executemany(
@@ -559,6 +579,20 @@ class SQLiteKnowledgeRepository:
             )
         except sqlite3.IntegrityError as error:
             raise DomainValidationError("relation type key already exists") from error
+
+    async def get_relation_type(self, key: str) -> RelationType | None:
+        row = self._connection.execute(
+            "SELECT key, label, description, directional FROM relation_type WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return None
+        return RelationType(
+            key=row["key"],
+            label=row["label"],
+            description=row["description"],
+            directional=bool(row["directional"]),
+        )
 
 
 class SQLiteJobRepository:

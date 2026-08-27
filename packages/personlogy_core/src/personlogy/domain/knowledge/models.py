@@ -34,6 +34,7 @@ class Citation:
     quote: str
     locator: dict[str, object]
     id: UUID = field(default_factory=uuid4)
+    metadata: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.quote.strip():
@@ -50,6 +51,7 @@ class Claim:
     status: VerificationStatus = VerificationStatus.CANDIDATE
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    metadata: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.statement.strip():

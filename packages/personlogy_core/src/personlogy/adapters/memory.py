@@ -221,6 +221,9 @@ class InMemoryKnowledgeRepository:
             raise DomainValidationError("relation type key already exists")
         self._store.relation_types[relation_type.key] = relation_type
 
+    async def get_relation_type(self, key: str) -> RelationType | None:
+        return self._store.relation_types.get(key)
+
 
 class InMemoryJobRepository:
     def __init__(self, store: InMemoryStore) -> None:

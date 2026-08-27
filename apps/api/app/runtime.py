@@ -4,6 +4,7 @@ from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.memory import InMemoryJobQueue, InMemoryStore, InMemoryUnitOfWorkFactory
 from personlogy.adapters.pdf import PdfPlumberParser
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
+from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
 from personlogy.application.ingestion import ConversationImportService, PdfImportService
 from personlogy.application.orchestration import JobService
 from personlogy.ports.queue import JobQueue
@@ -42,4 +43,10 @@ pdf_import_service = PdfImportService(
     LocalFileStorage(settings.pdf_storage_root),
     PdfPlumberParser(),
     max_size_bytes=settings.pdf_max_size_bytes,
+)
+compilation_service = CompilationService(
+    uow_factory,
+    job_service,
+    DocumentHeuristicCompiler(),
+    LocalFileStorage(settings.pdf_storage_root),
 )

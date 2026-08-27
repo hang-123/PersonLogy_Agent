@@ -1,5 +1,6 @@
 import asyncio
 import os
+from uuid import UUID
 
 import structlog
 from personlogy.adapters.local_files import LocalFileStorage
@@ -9,6 +10,7 @@ from personlogy.adapters.sqlite import (
     SQLiteStore,
     SQLiteUnitOfWorkFactory,
 )
+from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
 from personlogy.application.ingestion import PdfImportService
 from personlogy.application.orchestration import JobService
 
@@ -25,6 +27,12 @@ async def run_worker() -> None:
         PdfPlumberParser(),
         max_size_bytes=int(os.getenv("PKS_PDF_MAX_SIZE_BYTES", str(25 * 1024 * 1024))),
     )
+    compilation_service = CompilationService(
+        SQLiteUnitOfWorkFactory(store),
+        service,
+        DocumentHeuristicCompiler(),
+        LocalFileStorage(os.getenv("PKS_PDF_STORAGE_ROOT", "../../data/files")),
+    )
     logger = structlog.get_logger()
     logger.info("worker_started", queue_backend="sqlite", storage_path=database_path)
     while True:
@@ -38,6 +46,16 @@ async def run_worker() -> None:
                 block_count = await pdf_service.process_pdf_job(job)
                 await service.report_progress(
                     job.id, 90, f"content_blocks_written:{block_count}"
+                )
+                await compilation_service.submit_for_version(
+                    project_id=UUID(str(job.payload["project_id"])),
+                    source_version_id=UUID(str(job.payload["source_version_id"])),
+                )
+            elif job.kind == "knowledge.compile":
+                await service.report_progress(job.id, 20, "compiling_candidates")
+                result = await compilation_service.process_compile_job(job)
+                await service.report_progress(
+                    job.id, 90, f"candidates_written:{result.claim_count}"
                 )
             else:
                 await service.report_progress(job.id, 10, "accepted")
