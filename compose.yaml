@@ -5,6 +5,9 @@ services:
     image: geldata/gel:7.1
     environment:
       GEL_SERVER_PASSWORD: ${GEL_SERVER_PASSWORD:-local-only-change-me}
+      # 启用 Gel UI（浏览器图形界面：schema 视图 + 数据表 + 查询 REPL）。
+      # 注意：Docker 镜像环境变量带 GEL_SERVER_ 前缀（文档省略前缀写作 SERVER_ADMIN_UI）
+      GEL_SERVER_ADMIN_UI: enabled
     ports:
       - "5656:5656"
     volumes:
@@ -42,6 +45,8 @@ services:
       PKS_PDF_STORAGE_ROOT: ${PKS_PDF_STORAGE_ROOT:-/workspace/data/files}
       PKS_PDF_MAX_SIZE_BYTES: ${PKS_PDF_MAX_SIZE_BYTES:-26214400}
       PKS_QUEUE_BACKEND: ${PKS_QUEUE_BACKEND:-sqlite}
+      # 切换到 Gel 后端时设置（worker 与 api 需一致）：
+      PKS_GEL_DSN: ${PKS_GEL_DSN:-}
     volumes:
       - ./data:/workspace/data
 

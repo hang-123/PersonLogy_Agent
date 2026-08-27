@@ -68,3 +68,12 @@ compilation_service = CompilationService(
     LocalFileStorage(settings.pdf_storage_root),
 )
 governance_service = GovernanceService(uow_factory)
+
+_shutdown_hooks: list[Callable[[], Awaitable[None]]] = []
+if gel_store is not None:
+    _shutdown_hooks.append(gel_store.aclose)
+
+
+async def shutdown() -> None:
+    for hook in _shutdown_hooks:
+        await hook()

@@ -28,8 +28,17 @@ from uuid import UUID
 import gel
 from gel import errors as gel_errors
 
+from personlogy.domain.governance.models import (
+    CandidateKind,
+    ConflictRecord,
+    DuplicateGroup,
+    GovernanceIssue,
+    GovernanceRun,
+    ReviewTask,
+    ReviewTaskStatus,
+)
 from personlogy.domain.job import Job, JobStatus
-from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode
+from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode, VerificationStatus
 from personlogy.domain.relation.models import Relation, RelationType
 from personlogy.domain.source.conversation import Conversation, ConversationMessage
 from personlogy.domain.source.models import (
@@ -40,10 +49,16 @@ from personlogy.domain.source.models import (
     SourceVersion,
 )
 from personlogy.ports.queue import JobQueue
-from personlogy.ports.repositories import JobRepository, KnowledgeRepository, SourceRepository
+from personlogy.ports.repositories import (
+    GovernanceRepository,
+    JobRepository,
+    KnowledgeRepository,
+    SourceRepository,
+)
 from personlogy.shared.errors import DomainValidationError
 
 __all__ = [
+    "GelGovernanceRepository",
     "GelJobQueue",
     "GelKnowledgeRepository",
     "GelSourceRepository",
@@ -476,6 +491,49 @@ class GelKnowledgeRepository:
         except gel_errors.EdgeDBError as error:
             raise _constraint_error(error, "knowledge node project does not exist") from error
 
+    async def get_node(self, node_id: UUID) -> KnowledgeNode | None:
+        row = await self._tx.query_single(
+            """
+            select KnowledgeNode {
+              id, node_type, title, properties, status, created_at, project: { id },
+            }
+            filter .id = <uuid>$id
+            limit 1
+            """,
+            id=node_id,
+        )
+        if row is None:
+            return None
+        return KnowledgeNode(
+            project_id=row.project.id,
+            node_type=row.node_type,
+            title=row.title,
+            properties=_mapping(row.properties),
+            status=VerificationStatus(row.status),
+            id=row.id,
+            created_at=row.created_at,
+        )
+
+    async def save_node(self, node: KnowledgeNode) -> None:
+        try:
+            rows = await self._tx.query(
+                """
+                update KnowledgeNode
+                filter .id = <uuid>$id
+                set {
+                  properties := <json>$properties,
+                  status := <default::VerificationStatus>$status,
+                }
+                """,
+                id=node.id,
+                properties=_json(node.properties),
+                status=node.status.value,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "knowledge node update failed") from error
+        if not rows:
+            raise DomainValidationError("knowledge node does not exist")
+
     async def add_citation(self, citation: Citation) -> None:
         try:
             await self._tx.execute(
@@ -485,12 +543,14 @@ class GelKnowledgeRepository:
                   content_block := (select ContentBlock filter .id = <uuid>$content_block_id),
                   quote := <str>$quote,
                   locator := <json>$locator,
+                  metadata := <json>$metadata,
                 }
                 """,
                 id=citation.id,
                 content_block_id=citation.content_block_id,
                 quote=citation.quote,
                 locator=_json(citation.locator),
+                metadata=_json(citation.metadata),
             )
         except gel_errors.EdgeDBError as error:
             raise _constraint_error(error, "citation content block does not exist") from error
@@ -506,6 +566,7 @@ class GelKnowledgeRepository:
                   statement := <str>$statement,
                   confidence := <optional float32>$confidence,
                   status := <default::VerificationStatus>$status,
+                  metadata := <json>$metadata,
                   citations := (select Citation
                                 filter .id in array_unpack(<array<uuid>>$citation_ids)),
                   created_at := <datetime>$created_at,
@@ -517,6 +578,7 @@ class GelKnowledgeRepository:
                 statement=claim.statement,
                 confidence=claim.confidence,
                 status=claim.status.value,
+                metadata=_json(claim.metadata),
                 citation_ids=[citation.id for citation in claim.citations],
                 created_at=claim.created_at,
             )
@@ -524,6 +586,62 @@ class GelKnowledgeRepository:
             raise _constraint_error(
                 error, "claim project, subject, or citation does not exist"
             ) from error
+
+    async def get_claim(self, claim_id: UUID) -> Claim | None:
+        row = await self._tx.query_single(
+            """
+            select Claim {
+              id, statement, confidence, status, metadata, created_at,
+              project: { id }, subject: { id },
+              citations: { id, quote, locator, metadata, content_block: { id } },
+            }
+            filter .id = <uuid>$id
+            limit 1
+            """,
+            id=claim_id,
+        )
+        if row is None:
+            return None
+        return Claim(
+            project_id=row.project.id,
+            subject_id=row.subject.id,
+            statement=row.statement,
+            citations=tuple(
+                Citation(
+                    content_block_id=item.content_block.id,
+                    quote=item.quote,
+                    locator=_mapping(item.locator),
+                    id=item.id,
+                    metadata=_mapping(item.metadata),
+                )
+                for item in row.citations
+            ),
+            confidence=row.confidence,
+            status=VerificationStatus(row.status),
+            id=row.id,
+            created_at=row.created_at,
+            metadata=_mapping(row.metadata),
+        )
+
+    async def save_claim(self, claim: Claim) -> None:
+        try:
+            rows = await self._tx.query(
+                """
+                update Claim
+                filter .id = <uuid>$id
+                set {
+                  status := <default::VerificationStatus>$status,
+                  metadata := <json>$metadata,
+                }
+                """,
+                id=claim.id,
+                status=claim.status.value,
+                metadata=_json(claim.metadata),
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "claim update failed") from error
+        if not rows:
+            raise DomainValidationError("claim does not exist")
 
     async def add_relation(self, relation: Relation) -> None:
         try:
@@ -537,6 +655,8 @@ class GelKnowledgeRepository:
                   target := (select KnowledgeNode filter .id = <uuid>$target_id),
                   properties := <json>$properties,
                   confidence := <optional float32>$confidence,
+                  status := <default::VerificationStatus>$status,
+                  metadata := <json>$metadata,
                   citations := (select Citation
                                 filter .id in array_unpack(<array<uuid>>$citation_ids)),
                   created_at := <datetime>$created_at,
@@ -549,6 +669,8 @@ class GelKnowledgeRepository:
                 target_id=relation.target_id,
                 properties=_json(relation.properties),
                 confidence=relation.confidence,
+                status=relation.status.value,
+                metadata=_json(relation.metadata),
                 citation_ids=list(relation.citation_ids),
                 created_at=relation.created_at,
             )
@@ -556,6 +678,60 @@ class GelKnowledgeRepository:
             raise _constraint_error(
                 error, "relation type, endpoints, project, or citation does not exist"
             ) from error
+
+    async def get_relation(self, relation_id: UUID) -> Relation | None:
+        row = await self._tx.query_single(
+            """
+            select Relation {
+              id, properties, confidence, status, metadata, created_at,
+              project: { id }, source: { id }, target: { id },
+              relation_type: { key },
+              citations: { id },
+            }
+            filter .id = <uuid>$id
+            limit 1
+            """,
+            id=relation_id,
+        )
+        if row is None:
+            return None
+        return Relation(
+            project_id=row.project.id,
+            relation_type=row.relation_type.key,
+            source_id=row.source.id,
+            target_id=row.target.id,
+            citation_ids=tuple(item.id for item in row.citations),
+            properties=_mapping(row.properties),
+            confidence=row.confidence,
+            id=row.id,
+            created_at=row.created_at,
+            status=VerificationStatus(row.status),
+            metadata=_mapping(row.metadata),
+        )
+
+    async def save_relation(self, relation: Relation) -> None:
+        try:
+            rows = await self._tx.query(
+                """
+                update Relation
+                filter .id = <uuid>$id
+                set {
+                  properties := <json>$properties,
+                  confidence := <optional float32>$confidence,
+                  status := <default::VerificationStatus>$status,
+                  metadata := <json>$metadata,
+                }
+                """,
+                id=relation.id,
+                properties=_json(relation.properties),
+                confidence=relation.confidence,
+                status=relation.status.value,
+                metadata=_json(relation.metadata),
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "relation update failed") from error
+        if not rows:
+            raise DomainValidationError("relation does not exist")
 
     async def add_relation_type(self, relation_type: RelationType) -> None:
         try:
@@ -577,6 +753,249 @@ class GelKnowledgeRepository:
             )
         except gel_errors.EdgeDBError as error:
             raise _constraint_error(error, "relation type key already exists") from error
+
+    async def get_relation_type(self, key: str) -> RelationType | None:
+        row = await self._tx.query_single(
+            """
+            select RelationType { key, label, description, directional }
+            filter .key = <str>$key
+            limit 1
+            """,
+            key=key,
+        )
+        if row is None:
+            return None
+        return RelationType(
+            key=row.key,
+            label=row.label,
+            description=row.description,
+            directional=row.directional,
+        )
+
+
+class GelGovernanceRepository:
+    def __init__(self, tx: Any) -> None:
+        self._tx = tx
+
+    async def add_run(self, run: GovernanceRun) -> None:
+        try:
+            await self._tx.execute(
+                """
+                insert GovernanceRun {
+                  id := <uuid>$id,
+                  project := (select Project filter .id = <uuid>$project_id),
+                  task_id := <uuid>$task_id,
+                  rule_version := <str>$rule_version,
+                  status := <default::GovernanceRunStatus>$status,
+                  candidate_ids := array_unpack(<array<uuid>>$candidate_ids),
+                  created_at := <datetime>$created_at,
+                }
+                """,
+                id=run.id,
+                project_id=run.project_id,
+                task_id=run.task_id,
+                rule_version=run.rule_version,
+                status=run.status.value,
+                candidate_ids=list(run.candidate_ids),
+                created_at=run.created_at,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "governance run project does not exist") from error
+
+    async def add_issue(self, issue: GovernanceIssue) -> None:
+        try:
+            await self._tx.execute(
+                """
+                insert GovernanceIssue {
+                  id := <uuid>$id,
+                  run := (select GovernanceRun filter .id = <uuid>$run_id),
+                  candidate_id := <uuid>$candidate_id,
+                  candidate_kind := <default::CandidateKind>$candidate_kind,
+                  code := <str>$code,
+                  message := <str>$message,
+                  severity := <default::GovernanceIssueSeverity>$severity,
+                  created_at := <datetime>$created_at,
+                }
+                """,
+                id=issue.id,
+                run_id=issue.run_id,
+                candidate_id=issue.candidate_id,
+                candidate_kind=issue.candidate_kind.value,
+                code=issue.code,
+                message=issue.message,
+                severity=issue.severity.value,
+                created_at=issue.created_at,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "governance issue run does not exist") from error
+
+    async def add_duplicate_group(self, group: DuplicateGroup) -> None:
+        try:
+            await self._tx.execute(
+                """
+                insert DuplicateGroup {
+                  id := <uuid>$id,
+                  project := (select Project filter .id = <uuid>$project_id),
+                  candidate_ids := array_unpack(<array<uuid>>$candidate_ids),
+                  basis := <str>$basis,
+                  created_at := <datetime>$created_at,
+                }
+                """,
+                id=group.id,
+                project_id=group.project_id,
+                candidate_ids=list(group.candidate_ids),
+                basis=group.basis,
+                created_at=group.created_at,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "duplicate group project does not exist") from error
+
+    async def add_conflict(self, conflict: ConflictRecord) -> None:
+        try:
+            await self._tx.execute(
+                """
+                insert ConflictRecord {
+                  id := <uuid>$id,
+                  project := (select Project filter .id = <uuid>$project_id),
+                  candidate_ids := array_unpack(<array<uuid>>$candidate_ids),
+                  basis := <str>$basis,
+                  status := <str>$status,
+                  created_at := <datetime>$created_at,
+                }
+                """,
+                id=conflict.id,
+                project_id=conflict.project_id,
+                candidate_ids=list(conflict.candidate_ids),
+                basis=conflict.basis,
+                status=conflict.status,
+                created_at=conflict.created_at,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "conflict project does not exist") from error
+
+    async def add_review_task(self, task: ReviewTask) -> None:
+        try:
+            await self._tx.execute(
+                """
+                insert ReviewTask {
+                  id := <uuid>$id,
+                  run := (select GovernanceRun filter .id = <uuid>$run_id),
+                  candidate_id := <uuid>$candidate_id,
+                  candidate_kind := <default::CandidateKind>$candidate_kind,
+                  status := <default::ReviewTaskStatus>$status,
+                  reviewer_id := <optional str>$reviewer_id,
+                  reason := <optional str>$reason,
+                  before := <json>$before,
+                  after := <json>$after,
+                  version := <int32>$version,
+                  reviewed_at := <optional datetime>$reviewed_at,
+                  created_at := <datetime>$created_at,
+                }
+                """,
+                id=task.id,
+                run_id=task.run_id,
+                candidate_id=task.candidate_id,
+                candidate_kind=task.candidate_kind.value,
+                status=task.status.value,
+                reviewer_id=task.reviewer_id,
+                reason=task.reason,
+                before=_json(task.before),
+                after=_json(task.after),
+                version=task.version,
+                reviewed_at=task.reviewed_at,
+                created_at=task.created_at,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "review task governance run does not exist") from error
+
+    async def get_review_task(self, task_id: UUID) -> ReviewTask | None:
+        row = await self._tx.query_single(
+            """
+            select ReviewTask {
+              id, candidate_id, candidate_kind, status, reviewer_id, reason,
+              before, after, version, created_at, reviewed_at, run: { id },
+            }
+            filter .id = <uuid>$id
+            limit 1
+            """,
+            id=task_id,
+        )
+        if row is None:
+            return None
+        return ReviewTask(
+            run_id=row.run.id,
+            candidate_id=row.candidate_id,
+            candidate_kind=CandidateKind(row.candidate_kind),
+            status=ReviewTaskStatus(row.status),
+            reviewer_id=row.reviewer_id,
+            reason=row.reason,
+            before=_mapping(row.before),
+            after=_mapping(row.after),
+            version=row.version,
+            id=row.id,
+            created_at=row.created_at,
+            reviewed_at=row.reviewed_at,
+        )
+
+    async def save_review_task(self, task: ReviewTask) -> None:
+        try:
+            rows = await self._tx.query(
+                """
+                update ReviewTask
+                filter .id = <uuid>$id
+                set {
+                  status := <default::ReviewTaskStatus>$status,
+                  reviewer_id := <optional str>$reviewer_id,
+                  reason := <optional str>$reason,
+                  before := <json>$before,
+                  after := <json>$after,
+                  version := <int32>$version,
+                  reviewed_at := <optional datetime>$reviewed_at,
+                }
+                """,
+                id=task.id,
+                status=task.status.value,
+                reviewer_id=task.reviewer_id,
+                reason=task.reason,
+                before=_json(task.before),
+                after=_json(task.after),
+                version=task.version,
+                reviewed_at=task.reviewed_at,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "review task update failed") from error
+        if not rows:
+            raise DomainValidationError("review task does not exist")
+
+    async def list_review_tasks(self, *, limit: int = 100) -> list[ReviewTask]:
+        rows = await self._tx.query(
+            """
+            select ReviewTask {
+              id, candidate_id, candidate_kind, status, reviewer_id, reason,
+              before, after, version, created_at, reviewed_at, run: { id },
+            }
+            order by .created_at desc
+            limit <int64>$limit
+            """,
+            limit=limit,
+        )
+        return [
+            ReviewTask(
+                run_id=row.run.id,
+                candidate_id=row.candidate_id,
+                candidate_kind=CandidateKind(row.candidate_kind),
+                status=ReviewTaskStatus(row.status),
+                reviewer_id=row.reviewer_id,
+                reason=row.reason,
+                before=_mapping(row.before),
+                after=_mapping(row.after),
+                version=row.version,
+                id=row.id,
+                created_at=row.created_at,
+                reviewed_at=row.reviewed_at,
+            )
+            for row in rows
+        ]
 
 
 class GelJobRepository:
@@ -727,6 +1146,7 @@ class GelUnitOfWork:
         self._tx: Any | None = None
         self.sources: SourceRepository
         self.knowledge: KnowledgeRepository
+        self.governance: GovernanceRepository
         self.jobs: JobRepository
         self._committed = False
 
@@ -743,6 +1163,7 @@ class GelUnitOfWork:
         await tx.__aenter__()
         self.sources = GelSourceRepository(tx)
         self.knowledge = GelKnowledgeRepository(tx)
+        self.governance = GelGovernanceRepository(tx)
         self.jobs = GelJobRepository(tx)
         return self
 
@@ -799,11 +1220,16 @@ class GelJobQueue(JobQueue):
             row = await self._store.client.query_single(
                 """
                 select Job { id }
-                filter .status = default::JobStatus.queued
-                   or (
-                     .status = default::JobStatus.retrying
-                     and (not exists .next_attempt_at or .next_attempt_at <= <datetime>$now)
-                   )
+                filter (
+                  .status = default::JobStatus.queued
+                  or (
+                    .status = default::JobStatus.retrying
+                    and (
+                      (.next_attempt_at ?? <datetime>'1970-01-01T00:00:00Z')
+                      <= <datetime>$now
+                    )
+                  )
+                )
                 order by .created_at asc
                 limit 1
                 """,

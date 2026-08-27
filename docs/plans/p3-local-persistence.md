@@ -38,7 +38,13 @@ uv run mypy app ../../packages/personlogy_core/src/personlogy
 
 ## GEL 接入边界
 
-后续 GEL 恢复后，只需要新增/替换 GEL Repository、UoW 和 Queue 装配，不修改领域模型、JobService 或 API 契约。SQLite 数据也可以作为本地样例和迁移联调数据源。
+后续 GEL 恢复后，只需要新增/替换 GEL Repository、UoW 和 Queue 装配，不修改领域模型、
+JobService 或 API 契约。SQLite 数据也可以作为本地样例和迁移联调数据源。
+
+**现状（P4 已落地）**：Gel 适配器已实现并接入（`PKS_STORAGE_BACKEND=gel`），
+`pdf.parse` 与 `knowledge.compile`（治理）链路已在 Gel 上端到端验证通过；
+SQLite 仍为默认后端，两种后端共用同一套端口契约。详见
+`docs/engineering/gel-adapter.md` 与 `docs/plans/p4-gel-integration.md`。
 
 ## 下一步
 

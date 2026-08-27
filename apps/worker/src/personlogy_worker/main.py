@@ -1,11 +1,14 @@
 import asyncio
 import os
+from collections.abc import Awaitable
+from typing import Any
 from uuid import UUID
 
 import structlog
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.pdf import PdfPlumberParser
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
+from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
 from personlogy.application.ingestion import PdfImportService
 from personlogy.application.orchestration import JobService
 from personlogy.ports.queue import JobQueue
@@ -18,7 +21,8 @@ PDF_MAX_SIZE_BYTES = int(os.getenv("PKS_PDF_MAX_SIZE_BYTES", str(25 * 1024 * 102
 POLL_INTERVAL = float(os.getenv("PKS_QUEUE_POLL_INTERVAL_SECONDS", "2.0"))
 
 
-def _build_services() -> tuple[UnitOfWorkFactory, JobQueue]:
+def _build_services() -> tuple[UnitOfWorkFactory, JobQueue, Any | None]:
+    """Return (uow_factory, queue, store_to_close)."""
     if STORAGE_BACKEND == "gel":
         from personlogy.adapters.gel import GelJobQueue, GelStore, GelUnitOfWorkFactory
 
@@ -28,18 +32,22 @@ def _build_services() -> tuple[UnitOfWorkFactory, JobQueue]:
         store = GelStore(dsn)
         factory: UnitOfWorkFactory = GelUnitOfWorkFactory(store)
         queue: JobQueue = GelJobQueue(store)
-        return factory, queue
+        return factory, queue, store
     if STORAGE_BACKEND == "sqlite":
         sqlite_store = SQLiteStore(os.getenv("PKS_SQLITE_PATH", "../../data/personlogy.sqlite3"))
         sqlite_factory = SQLiteUnitOfWorkFactory(sqlite_store)
         if QUEUE_BACKEND == "sqlite":
-            return sqlite_factory, SQLiteJobQueue(sqlite_store)
+            return sqlite_factory, SQLiteJobQueue(sqlite_store), None
         raise RuntimeError(f"unsupported queue_backend for sqlite storage: {QUEUE_BACKEND}")
     raise RuntimeError(f"unsupported storage_backend: {STORAGE_BACKEND}")
 
 
 async def run_worker() -> None:
-    uow_factory, queue = _build_services()
+    uow_factory, queue, store = _build_services()
+    if store is not None:
+        aclose: Awaitable[None] = store.aclose()
+    else:
+        aclose = _noop()
     service = JobService(uow_factory, queue)
     pdf_service = PdfImportService(
         uow_factory,
@@ -48,42 +56,55 @@ async def run_worker() -> None:
         PdfPlumberParser(),
         max_size_bytes=PDF_MAX_SIZE_BYTES,
     )
+    compilation_service = CompilationService(
+        uow_factory,
+        service,
+        DocumentHeuristicCompiler(),
+        LocalFileStorage(PDF_STORAGE_ROOT),
+    )
     logger = structlog.get_logger()
     logger.info(
         "worker_started",
         storage_backend=STORAGE_BACKEND,
         queue_backend=QUEUE_BACKEND,
     )
-    while True:
-        job = await service.start_next(timeout_seconds=POLL_INTERVAL)
-        if job is None:
-            continue
-        logger.info("job_claimed", job_id=str(job.id), kind=job.kind, attempt=job.attempt)
-        try:
-            if job.kind == "pdf.parse":
-                await service.report_progress(job.id, 20, "parsing")
-                block_count = await pdf_service.process_pdf_job(job)
-                await service.report_progress(
-                    job.id, 90, f"content_blocks_written:{block_count}"
-                )
-                await compilation_service.submit_for_version(
-                    project_id=UUID(str(job.payload["project_id"])),
-                    source_version_id=UUID(str(job.payload["source_version_id"])),
-                )
-            elif job.kind == "knowledge.compile":
-                await service.report_progress(job.id, 20, "compiling_candidates")
-                result = await compilation_service.process_compile_job(job)
-                await service.report_progress(
-                    job.id,
-                    90,
-                    f"governance:{result.governance_status}:review_tasks:{result.review_task_count}",
-                )
-            else:
-                await service.report_progress(job.id, 10, "accepted")
-            await service.succeed(job.id)
-        except Exception as error:
-            logger.exception("job_failed", job_id=str(job.id), error=str(error))
-            await service.fail(job.id, str(error), retryable=True)
+    try:
+        while True:
+            job = await service.start_next(timeout_seconds=POLL_INTERVAL)
+            if job is None:
+                continue
+            logger.info("job_claimed", job_id=str(job.id), kind=job.kind, attempt=job.attempt)
+            try:
+                if job.kind == "pdf.parse":
+                    await service.report_progress(job.id, 20, "parsing")
+                    block_count = await pdf_service.process_pdf_job(job)
+                    await service.report_progress(
+                        job.id, 90, f"content_blocks_written:{block_count}"
+                    )
+                    await compilation_service.submit_for_version(
+                        project_id=UUID(str(job.payload["project_id"])),
+                        source_version_id=UUID(str(job.payload["source_version_id"])),
+                    )
+                elif job.kind == "knowledge.compile":
+                    await service.report_progress(job.id, 20, "compiling_candidates")
+                    result = await compilation_service.process_compile_job(job)
+                    await service.report_progress(
+                        job.id,
+                        90,
+                        f"governance:{result.governance_status}:review_tasks:{result.review_task_count}",
+                    )
+                else:
+                    await service.report_progress(job.id, 10, "accepted")
+                await service.succeed(job.id)
+            except Exception as error:
+                logger.exception("job_failed", job_id=str(job.id), error=str(error))
+                await service.fail(job.id, str(error), retryable=True)
+    finally:
+        await aclose
+
+
+async def _noop() -> None:
+    return None
 
 
 def main() -> None:

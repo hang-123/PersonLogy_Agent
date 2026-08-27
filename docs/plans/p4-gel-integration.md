@@ -6,19 +6,28 @@
 ## 1. 当前已完成（本仓库）
 
 - **Schema 已部署到本机 `my-gel` 的 `personlogy` 库**：
-  - 迁移 `GEL/dbschema/migrations/00001-m1kj56k.edgeql`（TP-01 全部业务类型）已生成并应用；
+  - 迁移 `GEL/dbschema/migrations/00001-m1kj56k.edgeql`（TP-01 业务类型）与
+    `00002-m15svfs.edgeql`（TP-05/06 治理与编译：GovernanceRun/Issue/DuplicateGroup/
+    ConflictRecord/ReviewTask，Citation/Claim/Relation 的 metadata/status，
+    VerificationStatus 扩展）均已生成并应用；
   - `seed.edgeql` 已执行（7 个关系类型）；
   - 已配置 `allow_user_specified_id := true`（领域对象 UUID 由 Python 生成，必须开启）。
 - **Gel 适配器已实现**：`packages/personlogy_core/src/personlogy/adapters/gel.py`
-  （GelStore / GelSourceRepository / GelKnowledgeRepository / GelJobRepository /
-  GelUnitOfWork(+Factory) / GelJobQueue，端口语义与 SQLite 适配器一致）。
+  （GelStore / GelSourceRepository / GelKnowledgeRepository / GelGovernanceRepository /
+  GelJobRepository / GelUnitOfWork(+Factory) / GelJobQueue，端口语义与 SQLite 适配器一致，
+  含 get/save 与治理方法）。
 - **装配已接线**：
   - `apps/api/app/runtime.py`：`PKS_STORAGE_BACKEND=gel` / `PKS_QUEUE_BACKEND=gel` 分支；
-  - `apps/api/app/main.py`：关停时释放 Gel 客户端；
+  - `apps/api/app/main.py`：关停时释放 Gel 客户端（`runtime.shutdown()`）；
   - `apps/api/app/api/routes/health.py`：gel 后端时做真实连通性检查；
-  - `apps/worker/src/personlogy_worker/main.py`：支持 gel/sqlite 双后端；
+  - `apps/worker/src/personlogy_worker/main.py`：支持 gel/sqlite 双后端，并处理
+    `pdf.parse` → `knowledge.compile`（治理）链路；
   - `.env.example` 增加 `PKS_GEL_DSN` 示例。
 - **集成测试已编写**：`apps/api/tests/test_gel_adapter.py`（设 `PKS_GEL_TEST_DSN` 才运行）。
+- **端到端已验证**（真实 API + Worker + Gel）：上传 PDF → `pdf.parse` succeeded →
+  ContentBlock 落 Gel → `knowledge.compile` succeeded → GovernanceRun（needs_review）+
+  2 条 ReviewTask 落 Gel。
+- **质量检查**：`pytest` 24 passed、`ruff`、`mypy` 全绿。
 
 ## 2. 前置要求
 

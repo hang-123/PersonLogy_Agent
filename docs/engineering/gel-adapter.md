@@ -45,18 +45,35 @@
 
 ### 2.4 Gel 7 语法注意点（已在实例上验证）
 
-- 可选字段判空：`not exists .next_attempt_at`（**`is empty` 在 Gel 7 已不存在**）；
+- **`or`/`and` 是三值逻辑且不短路**：任一侧是空集合时结果为 `{}`（如
+  `true or <bool>{}` 为 `{}`），会把 filter 行过滤掉。可选字段比较必须用 `??` 兜底成非空
+  bool，例如队列过滤 `(.next_attempt_at ?? <datetime>'1970-01-01T00:00:00Z') <= $now`；
+- **`select Type` 不返回属性**（gel 3.x 无隐式 shape），所有读取必须显式声明 shape
+  （如 `select Project { name, slug, created_at }`，链接用 `project: { id }`）；
+- 可选字段判空：`not exists .x`（`is empty` 在 Gel 7 已不存在）；
 - 枚举比较可直接用字面量：`.status = default::JobStatus.queued`；
 - `update ... set { ... }` 中**不能给 `id` 赋值**，只更新其余字段；
-- 迁移文件按 CLI 约定存放于 `dbschema/migrations/`。
+- 迁移文件按 CLI 约定存放于 `dbschema/migrations/`；`gel migration create` 需
+  `--non-interactive` 才能自动化。
 
-### 2.5 错误映射
+### 2.5 驱动 API（gel 3.1，与 edgedb 旧驱动不同）
+
+- 用 **`gel.create_async_client(dsn=...)`**（顶层 `gel.create_client` 是阻塞版 Client）；
+- `client.transaction()` 返回 **`Retry` 异步迭代器**，不是 async context manager；
+  每个迭代产出"managed transaction"（`async with tx:` 提交/回滚）。适配器取一次迭代并
+  手动驱动 `__aenter__`/`__aexit__`，使 commit 恰好发生在 UoW `__aexit__`；
+- 关闭客户端用 `await client.aclose()`；
+- 错误基类为 `gel.errors.EdgeDBError`（不是 GelError）。
+
+### 2.6 错误映射
 
 - `gel.errors.ConstraintViolationError` / `MissingRequiredError` → `DomainValidationError`
   （消息与 SQLite 适配器对齐，如 "project slug already exists"）；
 - 其余 Gel 错误原样抛出。
+- **注意**：Gel 中一条语句失败会中止整个事务，后续命令报
+  `current transaction is aborted` —— 不能在事务内吞掉错误继续写。
 
-### 2.6 队列
+### 2.7 队列
 
 - `GelJobQueue.enqueue` 是 no-op：Job 行随 UoW 提交即入队（与 `SQLiteJobQueue` 一致）；
 - `dequeue` 轮询查询 `queued` 或到期 `retrying` 的 Job，供 API 与独立 Worker 跨进程共享。
@@ -69,9 +86,25 @@
 - gel 相关导入放在分支内（惰性导入），保证 `sqlite/memory` 模式下不依赖 Gel 驱动连接；
 - `main.py` lifespan 关停时调用 `runtime.shutdown()` 释放客户端；
 - `health/ready`：gel 后端时用 `GelStore.ping()` 做真实连通性检查。
+- **独立 Worker**（`apps/worker/src/personlogy_worker/main.py`）：按
+  `PKS_STORAGE_BACKEND` 选择 gel/sqlite，并构造 `CompilationService` 处理
+  `knowledge.compile`（内部走 `uow.governance`）。
 
-## 4. 验证
+## 4. 覆盖范围（与 SQLite 适配器对齐）
+
+- `SourceRepository`：Project/Source/SourceVersion/ContentBlock/Conversation/Message；
+  **注意**：Gel schema 暂未定义 Conversation/ConversationMessage 类型，对话导入仍以
+  SQLite 承载（见 `GEL/README.md` 已知坑）；
+- `KnowledgeRepository`：Node/Citation/Claim/Relation/RelationType 的增查改（含
+  get/save 与 status/metadata）；
+- `GovernanceRepository`：GovernanceRun/GovernanceIssue/DuplicateGroup/ConflictRecord/
+  ReviewTask（增查改、列表）；
+- `JobRepository` / `UnitOfWork(+Factory)` / `JobQueue`。
+
+## 5. 验证
 
 - `apps/api/tests/test_gel_adapter.py`：PDF 导入闭环、知识库写读、UoW 未提交回滚
   （设 `PKS_GEL_TEST_DSN` 运行，未设置自动 skip）；
-- 端到端步骤见 `docs/plans/p4-gel-integration.md` 第 5 节。
+- 端到端（真实 API + Worker + Gel）：上传 PDF → `pdf.parse` → ContentBlock 落 Gel →
+  `knowledge.compile` → GovernanceRun/ReviewTask 落 Gel，任务均 `succeeded`
+  （步骤见 `docs/plans/p4-gel-integration.md` 第 5 节）。
