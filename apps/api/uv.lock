@@ -205,6 +205,22 @@ wheels = [
 ]
 
 [[package]]
+name = "gel"
+version = "3.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9c/70/84cee8eb48a2760893e60e8267502bc16ddef2197dd41f20c103a3f04e01/gel-3.1.0.tar.gz", hash = "sha256:3bb0b21167e00c976675a7d5dd73c21002e659651bf9de7fa46cd418bfa3eb85", size = 1331332, upload-time = "2025-04-29T20:44:49.659Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/b2/f696bdc168325e55189fe2b4d453cd0e999028ea7579c1a8d76072c7b63c/gel-3.1.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:42dedd9f691e2e6c82539dc04ff05d6a6dc6e0c13b07192442e142a87f1c37b1", size = 914566, upload-time = "2025-04-29T20:44:16.787Z" },
+    { url = "https://files.pythonhosted.org/packages/21/76/6936c544c62eb686db0f51d5f6f892c874272ed803321f1179e8bfd14b32/gel-3.1.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:b2d7497fe30ae9794f6f24df59071bf9da2d7accd67d4216ebe126c7ef3c173d", size = 869387, upload-time = "2025-04-29T20:44:19.149Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/6a/0bbd98e077d435edfe242e946f46f7c61fe93fd3e8e9144d9e59c9702e65/gel-3.1.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8421976750c4e8bac052797e8ffee2f082b1268bfc2f1d5a265eedfcf8c4f116", size = 4632391, upload-time = "2025-04-29T20:44:20.802Z" },
+    { url = "https://files.pythonhosted.org/packages/de/1d/3100e52c76664479bef1191554bbcb987a102a6af0c8e657738c4fa35527/gel-3.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b059b4d2aac27a1ee95c3bd18add1090a899e7bfd4668f1c99aa3d1f57b7714a", size = 4744996, upload-time = "2025-04-29T20:44:23.85Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/6a/77f50b3f97ef75c6a54e95adf16e39b98b563105ba9c1185c1d772381a4a/gel-3.1.0-cp312-cp312-win_amd64.whl", hash = "sha256:3927e15c98867c71bdfd13d887efc0268c30e657d46d1a7bf916787b445f3d76", size = 833184, upload-time = "2025-04-29T20:44:26.118Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -416,11 +432,15 @@ name = "personlogy-core"
 version = "0.1.0"
 source = { editable = "../../packages/personlogy_core" }
 dependencies = [
+    { name = "gel" },
     { name = "pdfplumber" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pdfplumber", specifier = ">=0.11,<1" }]
+requires-dist = [
+    { name = "gel", specifier = ">=3.0,<4" },
+    { name = "pdfplumber", specifier = ">=0.11,<1" },
+]
 
 [[package]]
 name = "pillow"

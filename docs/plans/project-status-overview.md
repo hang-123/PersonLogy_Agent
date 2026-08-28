@@ -15,9 +15,9 @@
 | P5 知识编译 | ✅ 已完成 | `KnowledgeCompiler` Port + `DocumentHeuristicCompiler`（本地启发式）、`CompilationService`、OKF v0.2 导出、`knowledge.compile` 任务、编译元数据 | 候选保持 `candidate`，不自动发布 |
 | P6 数据治理与审核 | ✅ 已完成（首版） | 机器治理（结构/来源校验、精确重复、保守冲突检测）、GovernanceRun/Issue/DuplicateGroup/ConflictRecord/ReviewTask、`GET /v1/review-tasks`、`POST .../decision` | **语义/LLM 去重未做**（留 Port）；审核不自动回写 |
 | P7 受控回写 | ❌ 未开始 | `application/writeback` 仅 docstring 空壳；治理通过后不自动发布（TP-08） | |
-| P8 混合检索 | ❌ 未开始 | `application/retrieval` 空壳 | |
+| P8 混合检索 | 🚧 第一批已落地 | SQLite FTS5/BM25、项目范围过滤、一跳关系扩展、Citation 证据组装；`/v1/retrieval/search`；`retrieval.index` 异步索引 Job 和 Worker 处理 | **向量检索、重排、权限系统未做** |
 | P9 前端交互 | 🚧 部分 | web 有最小工作台（CandidateDesk/SourceDesk），但 **api.ts 指向旧版端点**（/sources、/candidates、/objects），与当前后端路由脱节 | 见 §2.5 |
-| P10 Schema 管理面 | ❌ 未开始 | `application/schema_management` 空壳；Gel migration 目前手工 CLI（--non-interactive） | |
+| P10 Schema 管理面 | 🚧 基础骨架已落地 | Schema Snapshot、Proposal、差异校验、SQLite Registry 持久化 | **审批/执行/回滚 API、SQLite 沙盒迁移、Gel Migration Executor 未做** |
 | P11 稳定性与部署 | 🚧 部分 | compose.yaml（gel/api/worker/web）、Dockerfile、健康检查；审计/指标/备份恢复未做 | |
 
 ## 2. 模块结构与接口接入

@@ -8,6 +8,7 @@ import structlog
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.pdf import PdfPlumberParser
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
+from personlogy.adapters.sqlite_features import SQLiteFeatureStore, SQLiteRetrievalIndexer
 from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
 from personlogy.application.ingestion import PdfImportService
 from personlogy.application.orchestration import JobService
@@ -21,8 +22,10 @@ PDF_MAX_SIZE_BYTES = int(os.getenv("PKS_PDF_MAX_SIZE_BYTES", str(25 * 1024 * 102
 POLL_INTERVAL = float(os.getenv("PKS_QUEUE_POLL_INTERVAL_SECONDS", "2.0"))
 
 
-def _build_services() -> tuple[UnitOfWorkFactory, JobQueue, Any | None]:
-    """Return (uow_factory, queue, store_to_close)."""
+def _build_services() -> tuple[
+    UnitOfWorkFactory, JobQueue, Any | None, SQLiteRetrievalIndexer | None
+]:
+    """Return (uow_factory, queue, store_to_close, retrieval_indexer)."""
     if STORAGE_BACKEND == "gel":
         from personlogy.adapters.gel import GelJobQueue, GelStore, GelUnitOfWorkFactory
 
@@ -32,18 +35,24 @@ def _build_services() -> tuple[UnitOfWorkFactory, JobQueue, Any | None]:
         store = GelStore(dsn)
         factory: UnitOfWorkFactory = GelUnitOfWorkFactory(store)
         queue: JobQueue = GelJobQueue(store)
-        return factory, queue, store
+        return factory, queue, store, None
     if STORAGE_BACKEND == "sqlite":
         sqlite_store = SQLiteStore(os.getenv("PKS_SQLITE_PATH", "../../data/personlogy.sqlite3"))
         sqlite_factory = SQLiteUnitOfWorkFactory(sqlite_store)
         if QUEUE_BACKEND == "sqlite":
-            return sqlite_factory, SQLiteJobQueue(sqlite_store), None
+            feature_store = SQLiteFeatureStore(sqlite_store.path)
+            return (
+                sqlite_factory,
+                SQLiteJobQueue(sqlite_store),
+                None,
+                SQLiteRetrievalIndexer(feature_store),
+            )
         raise RuntimeError(f"unsupported queue_backend for sqlite storage: {QUEUE_BACKEND}")
     raise RuntimeError(f"unsupported storage_backend: {STORAGE_BACKEND}")
 
 
 async def run_worker() -> None:
-    uow_factory, queue, store = _build_services()
+    uow_factory, queue, store, retrieval_indexer = _build_services()
     if store is not None:
         aclose: Awaitable[None] = store.aclose()
     else:
@@ -92,6 +101,15 @@ async def run_worker() -> None:
                         job.id,
                         90,
                         f"governance:{result.governance_status}:review_tasks:{result.review_task_count}",
+                    )
+                elif job.kind == "retrieval.index":
+                    if retrieval_indexer is None:
+                        raise RuntimeError("SQLite retrieval indexer is not configured")
+                    await service.report_progress(job.id, 20, "rebuilding_retrieval_index")
+                    project_id = UUID(str(job.payload["project_id"]))
+                    count = await retrieval_indexer.rebuild_project(project_id)
+                    await service.report_progress(
+                        job.id, 90, f"retrieval_documents_indexed:{count}"
                     )
                 else:
                     await service.report_progress(job.id, 10, "accepted")

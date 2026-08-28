@@ -5,7 +5,12 @@ import structlog
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.runtime import compilation_service, job_service, pdf_import_service
+from app.runtime import (
+    compilation_service,
+    job_service,
+    pdf_import_service,
+    retrieval_indexer,
+)
 
 
 async def run_worker() -> None:
@@ -36,6 +41,15 @@ async def run_worker() -> None:
                     job.id,
                     90,
                     f"governance:{result.governance_status}:review_tasks:{result.review_task_count}",
+                )
+            elif job.kind == "retrieval.index":
+                if retrieval_indexer is None:
+                    raise RuntimeError("SQLite retrieval indexer is not configured")
+                await job_service.report_progress(job.id, 20, "rebuilding_retrieval_index")
+                project_id = UUID(str(job.payload["project_id"]))
+                count = await retrieval_indexer.rebuild_project(project_id)
+                await job_service.report_progress(
+                    job.id, 90, f"retrieval_documents_indexed:{count}"
                 )
             else:
                 await job_service.report_progress(job.id, 10, "accepted")

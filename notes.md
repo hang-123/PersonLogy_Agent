@@ -1,26 +1,24 @@
-# Notes: P6 governance and review
+# Notes: P0-P6 完成度审查
 
 ## Sources
 
-### Local repository
-- P5 已提供 PDF → ContentBlock → knowledge.compile → Concept/Claim/Relation/Citation + OKF。
-- 当前知识对象已有 candidate、machine_checked、human_verified、rejected 状态；P6 需要补齐 pending_review / needs_revision / ready_for_writeback 或明确等价状态。
-- 当前 GEL Schema 已有 ReviewRecord，但 Python/SQLite 治理对象尚未落地。
+### Project workspace
+- Path: `D:\PersonLogy_Agent`
+- Current branch: `develop`.
+- Recent commits include `fix: 完善gel接口`, `feat: 新增数据治理模块`, `feat: 新增知识编译`, and `feat: 新增gel适配`.
+- Main implementation areas: `packages/personlogy_core`, `apps/api`, `apps/worker`, `GEL`, `docs`, and `apps/web`.
+
+### Validation performed
+- API/core tests: 24 passed, 6 Gel integration tests skipped because `PKS_GEL_TEST_DSN` was not set.
+- Ruff: passed for API/core and independent Worker.
+- Mypy: passed for API/core, 71 source files.
+- Frontend build: not run successfully; TypeScript/Vite executables are absent under `apps/web/node_modules`.
+- Gel CLI: `gel --version` works, but `gel instance list` fails during WSL2 initialization; no local Gel server was modified.
 
 ## Synthesized Findings
 
-### P6 implementation decision
-- P6 首轮交付机器治理、GovernanceRun、GovernanceIssue、Duplicate/Conflict 标记和 ReviewTask。
-- 机器治理通过后仍进入人工审核；不存在“结构合法即自动回写”。
-- 先用规则检测精确重复和保守的文本冲突；语义去重留出接口，不在本轮伪装成已完成。
-
-### P6 implementation result
-- P5 编译任务现在在同一事务中写入候选与治理记录，默认结果为 `needs_review`。
-- 每个节点、Claim、Relation 都生成一个 ReviewTask；批准后对应候选变为 `human_verified`，驳回为 `rejected`，修改为 `needs_revision`。
-- 新增 API：`GET /v1/review-tasks` 和 `POST /v1/review-tasks/{task_id}/decision`。
-- 旧 SQLite 数据库会自动补齐 Relation status 和治理表。
-
-### Integration decisions
-- GEL 暂不接入当前运行时；SQLite + 本地文件继续作为可运行替身。
-- P5 Worker 完成编译后提交/执行治理任务，治理结果和 ReviewTask 仍写入本地库。
-- 真实向量/LLM 语义治理只通过 Port 接入，不改变治理状态机和审核边界。
+- The repository has a real P0-P6 first-version implementation, not just placeholders: PDF import, conversation import, heuristic compilation, governance, SQLite persistence, Gel schema/migrations, Gel adapters, API routes, and Worker wiring are present.
+- P4 is not backend-complete across all configured backends: Gel adapter methods reference `Conversation`/`ConversationMessage`, but the Gel schema has no corresponding types.
+- The current first-version product boundary intentionally leaves MinIO/S3, LLM semantic compilation, semantic deduplication, schema management, formal writeback, indexing, and retrieval for later phases.
+- The old workbook reports 2 of 46 micro-items as complete and milestones M0 in progress/M1-M5 not started; this is stale compared with the current repository and should be refreshed rather than used as the current status.
+- Documentation drift remains: some architecture/ontology notes reference deleted legacy PostgreSQL modules; the status overview still refers to a root `DEVELOPMENT_PLAN.md` deleted by the latest commit; the Gel checklist contains both updated “done” rows and older “not yet run” text.

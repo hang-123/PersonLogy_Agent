@@ -1,15 +1,23 @@
 from collections.abc import Awaitable, Callable
 from typing import cast
+from uuid import UUID
 
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.memory import InMemoryJobQueue, InMemoryStore, InMemoryUnitOfWorkFactory
 from personlogy.adapters.pdf import PdfPlumberParser
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
+from personlogy.adapters.sqlite_features import (
+    SQLiteFeatureStore,
+    SQLiteRetrievalIndexer,
+    SQLiteRetrievalReader,
+)
 from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
 from personlogy.application.governance import GovernanceService
 from personlogy.application.ingestion import ConversationImportService, PdfImportService
 from personlogy.application.orchestration import JobService
+from personlogy.application.retrieval import RetrievalService
 from personlogy.ports.queue import JobQueue
+from personlogy.ports.retrieval import RetrievalHit, RetrievalReader
 from personlogy.ports.unit_of_work import UnitOfWorkFactory
 
 from app.core.config import get_settings
@@ -68,6 +76,28 @@ compilation_service = CompilationService(
     LocalFileStorage(settings.pdf_storage_root),
 )
 governance_service = GovernanceService(uow_factory)
+
+
+class _EmptyRetrievalReader:
+    async def search(
+        self,
+        *,
+        project_id: UUID,
+        query: str,
+        limit: int = 20,
+        expand_relations: bool = False,
+    ) -> tuple[RetrievalHit, ...]:
+        return ()
+
+
+retrieval_indexer: SQLiteRetrievalIndexer | None = None
+if isinstance(store, SQLiteStore):
+    feature_store = SQLiteFeatureStore(store.path)
+    retrieval_indexer = SQLiteRetrievalIndexer(feature_store)
+    retrieval_reader: RetrievalReader = SQLiteRetrievalReader(feature_store)
+else:
+    retrieval_reader = _EmptyRetrievalReader()
+retrieval_service = RetrievalService(retrieval_reader)
 
 _shutdown_hooks: list[Callable[[], Awaitable[None]]] = []
 if gel_store is not None:
