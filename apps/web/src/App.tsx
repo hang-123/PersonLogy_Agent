@@ -124,18 +124,18 @@ export function App() {
         <div className="sidebar-status">
           <Badge status={badgeStatus} text={"API " + apiState} />
           <Text code>v{apiVersion}</Text>
-          <small>PostgreSQL authority</small>
+          <small>Backend data authority</small>
         </div>
       </aside>
 
       <main className="app-main">
         <header className="topbar">
           <div>
-            <Text className="dateline">P0 · 求职知识域 · 2026 / 07 / 28</Text>
+            <Text className="dateline">P9 · 个人知识工作台 · 2026 / 08 / 31</Text>
             <Title level={1}>证据档案与审核工作台</Title>
           </div>
           <div className="topbar-actions">
-            <Tag color="green">PostgreSQL · authoritative</Tag>
+            <Tag color="green">Evidence-first · project scoped</Tag>
             <Tag>project · {project.projectSlug || "未设置"}</Tag>
             <Button onClick={() => setRefreshToken((value) => value + 1)}>刷新数据</Button>
           </div>

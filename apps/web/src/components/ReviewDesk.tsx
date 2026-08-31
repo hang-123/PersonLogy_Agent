@@ -169,7 +169,7 @@ export function ReviewDesk({ refreshToken }: ReviewDeskProps) {
 
           <article className="evidence-column">
             <div className="column-label">01 / CANDIDATE SNAPSHOT</div>
-            {detailLoading ? <Skeleton active paragraph={{ rows: 10 }} /> : detail ? <><div className="source-heading"><Tag color="gold">{kindLabels[detail.candidate_kind] ?? detail.candidate_kind}</Tag><Text type="secondary">v{detail.version}</Text></div><Title level={3}>待验证候选</Title><div className="review-identity"><span>candidate_id</span><strong>{detail.candidate_id}</strong></div><pre className="candidate-snapshot">{pretty(detail.before)}</pre><Alert type="info" showIcon message="来源证据详情将在 Source / Evidence 详情接口接入后展开" description="当前保留候选快照、candidate_id 和 citation_ids，审核动作仍由服务端版本控制。" /></> : <Empty description="选择任务查看候选" />}
+            {detailLoading ? <Skeleton active paragraph={{ rows: 10 }} /> : detail ? <><div className="source-heading"><Tag color="gold">{kindLabels[detail.candidate_kind] ?? detail.candidate_kind}</Tag><Text type="secondary">v{detail.version}</Text></div><Title level={3}>待验证候选</Title><div className="review-identity"><span>candidate_id</span><strong>{detail.candidate_id}</strong></div><pre className="candidate-snapshot">{pretty(detail.before)}</pre><Alert type="info" showIcon message="来源详情可从检索或问答工作台回溯" description="当前审核面板保留候选快照、candidate_id 和 citation_ids，审核动作仍由服务端版本控制。" /></> : <Empty description="选择任务查看候选" />}
           </article>
 
           <article className="decision-column">
