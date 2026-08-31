@@ -6,6 +6,7 @@ module default {
   scalar type GovernanceIssueSeverity extending enum<info, warning, error>;
   scalar type CandidateKind extending enum<node, claim, relation>;
   scalar type ReviewTaskStatus extending enum<pending, approved, rejected, revised>;
+  scalar type WritebackStatus extending enum<effects_pending, retryable_failed, completed, reverted>;
   scalar type JobStatus extending enum<queued, running, retrying, succeeded, failed, cancelled>;
 
   abstract type Timestamped {
@@ -141,6 +142,36 @@ module default {
     required after: json { default := <json>{}; };
     required version: int32 { default := 1; constraint min_value(1); };
     reviewed_at: datetime;
+  };
+
+  type WritebackRecord extending Timestamped {
+    required project: Project;
+    required governance_run: GovernanceRun;
+    required schema_namespace: str;
+    required schema_version: int32 { constraint min_value(1); };
+    required idempotency_key: str { constraint exclusive; };
+    required request_digest: str;
+    required candidate_digest: str;
+    required candidates: json { default := <json>{}; };
+    required status: WritebackStatus { default := WritebackStatus.effects_pending; };
+    effects_job_id: uuid;
+    okf_object_key: str;
+    index_job_id: uuid;
+    error_code: str;
+    error_digest: str;
+    committed_at: datetime;
+    completed_at: datetime;
+  };
+
+  type WritebackItem extending Timestamped {
+    required record: WritebackRecord;
+    required candidate_id: uuid;
+    required candidate_kind: CandidateKind;
+    required before_status: VerificationStatus;
+    required after_status: VerificationStatus;
+    required before_digest: str;
+    required after_digest: str;
+    required result: str;
   };
 
   type Job extending Timestamped {

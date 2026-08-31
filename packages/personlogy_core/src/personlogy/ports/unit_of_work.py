@@ -7,12 +7,14 @@ from personlogy.ports.repositories import (
     KnowledgeRepository,
     SourceRepository,
 )
+from personlogy.ports.writeback import WritebackRepository
 
 
 class UnitOfWork(Protocol):
     sources: SourceRepository
     knowledge: KnowledgeRepository
     governance: GovernanceRepository
+    writebacks: WritebackRepository
     jobs: JobRepository
 
     async def __aenter__(self) -> Self: ...

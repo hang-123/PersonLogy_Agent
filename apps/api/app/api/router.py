@@ -11,6 +11,7 @@ from app.modules.replay.router import router as replay_router
 from app.modules.retrieval.router import router as retrieval_router
 from app.modules.schema_management.router import router as schema_management_router
 from app.modules.sources.router import router as sources_router
+from app.modules.writebacks.router import router as writebacks_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, prefix="/health", tags=["health"])
@@ -24,3 +25,4 @@ api_router.include_router(lineage_router)
 api_router.include_router(monitoring_router)
 api_router.include_router(replay_router)
 api_router.include_router(schema_management_router)
+api_router.include_router(writebacks_router)

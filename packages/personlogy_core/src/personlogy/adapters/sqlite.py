@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 from types import TracebackType
-from typing import cast
+from typing import Self, cast
 from uuid import UUID
 
 from personlogy.domain.governance.models import (
@@ -22,7 +22,12 @@ from personlogy.domain.governance.models import (
     ReviewTaskStatus,
 )
 from personlogy.domain.job import Job, JobStatus
-from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode, VerificationStatus
+from personlogy.domain.knowledge.models import (
+    Citation,
+    Claim,
+    KnowledgeNode,
+    VerificationStatus,
+)
 from personlogy.domain.relation.models import Relation, RelationType
 from personlogy.domain.source.conversation import Conversation, ConversationMessage
 from personlogy.domain.source.models import (
@@ -32,6 +37,12 @@ from personlogy.domain.source.models import (
     SourceKind,
     SourceVersion,
 )
+from personlogy.domain.writeback.models import (
+    CandidateRef,
+    WritebackItem,
+    WritebackRecord,
+    WritebackStatus,
+)
 from personlogy.ports.queue import JobQueue
 from personlogy.ports.repositories import (
     GovernanceRepository,
@@ -40,6 +51,7 @@ from personlogy.ports.repositories import (
     SourceRepository,
 )
 from personlogy.ports.unit_of_work import UnitOfWork
+from personlogy.ports.writeback import WritebackRepository
 from personlogy.shared.errors import DomainValidationError
 
 SCHEMA = """
@@ -189,7 +201,7 @@ CREATE TABLE IF NOT EXISTS conflict_record (
     status TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS review_task (
+    CREATE TABLE IF NOT EXISTS review_task (
     id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES governance_run(id),
     candidate_id TEXT NOT NULL,
@@ -201,8 +213,43 @@ CREATE TABLE IF NOT EXISTS review_task (
     after TEXT NOT NULL,
     version INTEGER NOT NULL,
     created_at TEXT NOT NULL,
-    reviewed_at TEXT
-);
+        reviewed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS writeback_record (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES project(id),
+        governance_run_id TEXT NOT NULL REFERENCES governance_run(id),
+        schema_namespace TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        request_digest TEXT NOT NULL,
+        candidate_digest TEXT NOT NULL,
+        candidates TEXT NOT NULL,
+        status TEXT NOT NULL,
+        effects_job_id TEXT,
+        okf_object_key TEXT,
+        index_job_id TEXT,
+        error_code TEXT,
+        error_digest TEXT,
+        created_at TEXT NOT NULL,
+        committed_at TEXT,
+        completed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS writeback_record_project_idx
+        ON writeback_record(project_id, created_at);
+    CREATE TABLE IF NOT EXISTS writeback_item (
+        id TEXT PRIMARY KEY,
+        record_id TEXT NOT NULL REFERENCES writeback_record(id),
+        candidate_id TEXT NOT NULL,
+        candidate_kind TEXT NOT NULL,
+        before_status TEXT NOT NULL,
+        after_status TEXT NOT NULL,
+        before_digest TEXT NOT NULL,
+        after_digest TEXT NOT NULL,
+        result TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(record_id, candidate_id, candidate_kind)
+    );
 CREATE TABLE IF NOT EXISTS job (
     id TEXT PRIMARY KEY,
     kind TEXT NOT NULL,
@@ -240,15 +287,30 @@ def _json_value(value: object) -> str:
 def _mapping(value: str) -> dict[str, object]:
     parsed = json.loads(value)
     if not isinstance(parsed, dict):
-        raise ValueError("stored JSON value is not an object")
+        raise TypeError("stored JSON value is not an object")
     return cast(dict[str, object], parsed)
 
 
 def _mappings(value: str) -> tuple[dict[str, object], ...]:
     parsed = json.loads(value)
     if not isinstance(parsed, list):
-        raise ValueError("stored JSON value is not a list")
+        raise TypeError("stored JSON value is not a list")
     return tuple(cast(dict[str, object], item) for item in parsed)
+
+
+def _candidate_refs(value: str) -> tuple[CandidateRef, ...]:
+    return tuple(
+        CandidateRef(
+            candidate_id=UUID(str(item["candidate_id"])),
+            candidate_kind=CandidateKind(str(item["candidate_kind"])),
+            expected_review_version=_optional_int(item.get("expected_review_version")),
+        )
+        for item in _mappings(value)
+    )
+
+
+def _optional_int(value: object) -> int | None:
+    return int(str(value)) if value is not None else None
 
 
 def _timestamp(value: datetime) -> str:
@@ -958,6 +1020,119 @@ class SQLiteGovernanceRepository:
         return [_review_task_from_row(row) for row in rows]
 
 
+class SQLiteWritebackRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    async def add(self, record: WritebackRecord) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO writeback_record
+                   (id, project_id, governance_run_id, schema_namespace, schema_version,
+                    idempotency_key, request_digest, candidate_digest, candidates, status,
+                    effects_job_id, okf_object_key, index_job_id, error_code, error_digest,
+                    created_at, committed_at, completed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(record.id),
+                    _id(record.project_id),
+                    _id(record.governance_run_id),
+                    record.schema_namespace,
+                    record.schema_version,
+                    record.idempotency_key,
+                    record.request_digest,
+                    record.candidate_digest,
+                    _json_value(
+                        [
+                            {
+                                "candidate_id": str(item.candidate_id),
+                                "candidate_kind": item.candidate_kind.value,
+                                "expected_review_version": item.expected_review_version,
+                            }
+                            for item in record.candidates
+                        ]
+                    ),
+                    record.status.value,
+                    _id(record.effects_job_id) if record.effects_job_id else None,
+                    record.okf_object_key,
+                    _id(record.index_job_id) if record.index_job_id else None,
+                    record.error_code,
+                    record.error_digest,
+                    _timestamp(record.created_at),
+                    _timestamp(record.committed_at) if record.committed_at else None,
+                    _timestamp(record.completed_at) if record.completed_at else None,
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError(
+                "writeback idempotency key or parent already exists"
+            ) from error
+
+    async def get(self, record_id: UUID) -> WritebackRecord | None:
+        row = self._connection.execute(
+            "SELECT * FROM writeback_record WHERE id = ?", (_id(record_id),)
+        ).fetchone()
+        return _writeback_from_row(row) if row is not None else None
+
+    async def get_by_idempotency_key(self, key: str) -> WritebackRecord | None:
+        row = self._connection.execute(
+            "SELECT * FROM writeback_record WHERE idempotency_key = ?", (key,)
+        ).fetchone()
+        return _writeback_from_row(row) if row is not None else None
+
+    async def save(self, record: WritebackRecord) -> None:
+        cursor = self._connection.execute(
+            """UPDATE writeback_record SET status = ?, effects_job_id = ?, okf_object_key = ?,
+               index_job_id = ?, error_code = ?, error_digest = ?, committed_at = ?,
+               completed_at = ? WHERE id = ?""",
+            (
+                record.status.value,
+                _id(record.effects_job_id) if record.effects_job_id else None,
+                record.okf_object_key,
+                _id(record.index_job_id) if record.index_job_id else None,
+                record.error_code,
+                record.error_digest,
+                _timestamp(record.committed_at) if record.committed_at else None,
+                _timestamp(record.completed_at) if record.completed_at else None,
+                _id(record.id),
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise DomainValidationError("writeback record does not exist")
+
+    async def add_item(self, item: WritebackItem) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO writeback_item
+                   (id, record_id, candidate_id, candidate_kind, before_status, after_status,
+                    before_digest, after_digest, result, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(item.id),
+                    _id(item.record_id),
+                    _id(item.candidate_id),
+                    item.candidate_kind.value,
+                    item.before_status.value,
+                    item.after_status.value,
+                    item.before_digest,
+                    item.after_digest,
+                    item.result,
+                    _timestamp(item.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError(
+                "writeback item record does not exist or already exists"
+            ) from error
+
+    async def list_items(self, record_id: UUID) -> list[WritebackItem]:
+        rows = self._connection.execute(
+            "SELECT * FROM writeback_item WHERE record_id = ? ORDER BY created_at ASC",
+            (_id(record_id),),
+        ).fetchall()
+        return [_writeback_item_from_row(row) for row in rows]
+
+
 def _review_task_from_row(row: sqlite3.Row) -> ReviewTask:
     return ReviewTask(
         run_id=UUID(row["run_id"]),
@@ -972,6 +1147,44 @@ def _review_task_from_row(row: sqlite3.Row) -> ReviewTask:
         id=UUID(row["id"]),
         created_at=_required_datetime(row["created_at"]),
         reviewed_at=_datetime(row["reviewed_at"]),
+    )
+
+
+def _writeback_from_row(row: sqlite3.Row) -> WritebackRecord:
+    return WritebackRecord(
+        project_id=UUID(row["project_id"]),
+        governance_run_id=UUID(row["governance_run_id"]),
+        schema_namespace=row["schema_namespace"],
+        schema_version=row["schema_version"],
+        idempotency_key=row["idempotency_key"],
+        request_digest=row["request_digest"],
+        candidate_digest=row["candidate_digest"],
+        candidates=_candidate_refs(row["candidates"]),
+        status=WritebackStatus(row["status"]),
+        effects_job_id=UUID(row["effects_job_id"]) if row["effects_job_id"] else None,
+        okf_object_key=row["okf_object_key"],
+        index_job_id=UUID(row["index_job_id"]) if row["index_job_id"] else None,
+        error_code=row["error_code"],
+        error_digest=row["error_digest"],
+        id=UUID(row["id"]),
+        created_at=_required_datetime(row["created_at"]),
+        committed_at=_datetime(row["committed_at"]),
+        completed_at=_datetime(row["completed_at"]),
+    )
+
+
+def _writeback_item_from_row(row: sqlite3.Row) -> WritebackItem:
+    return WritebackItem(
+        record_id=UUID(row["record_id"]),
+        candidate_id=UUID(row["candidate_id"]),
+        candidate_kind=CandidateKind(row["candidate_kind"]),
+        before_status=VerificationStatus(row["before_status"]),
+        after_status=VerificationStatus(row["after_status"]),
+        before_digest=row["before_digest"],
+        after_digest=row["after_digest"],
+        result=row["result"],
+        id=UUID(row["id"]),
+        created_at=_required_datetime(row["created_at"]),
     )
 
 
@@ -1087,10 +1300,11 @@ class SQLiteUnitOfWork:
         self.sources: SourceRepository = SQLiteSourceRepository(self._connection)
         self.knowledge: KnowledgeRepository = SQLiteKnowledgeRepository(self._connection)
         self.governance: GovernanceRepository = SQLiteGovernanceRepository(self._connection)
+        self.writebacks: WritebackRepository = SQLiteWritebackRepository(self._connection)
         self.jobs: JobRepository = SQLiteJobRepository(self._connection)
         self._committed = False
 
-    async def __aenter__(self) -> SQLiteUnitOfWork:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(
@@ -1160,4 +1374,5 @@ __all__ = [
     "SQLiteStore",
     "SQLiteUnitOfWork",
     "SQLiteUnitOfWorkFactory",
+    "SQLiteWritebackRepository",
 ]

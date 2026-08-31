@@ -22,12 +22,11 @@ import json
 from datetime import UTC, datetime
 from time import monotonic
 from types import TracebackType
-from typing import Any, cast
+from typing import Any, Self, cast
 from uuid import UUID
 
 import gel
 from gel import errors as gel_errors
-
 from personlogy.domain.governance.models import (
     CandidateKind,
     ConflictRecord,
@@ -38,7 +37,12 @@ from personlogy.domain.governance.models import (
     ReviewTaskStatus,
 )
 from personlogy.domain.job import Job, JobStatus
-from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode, VerificationStatus
+from personlogy.domain.knowledge.models import (
+    Citation,
+    Claim,
+    KnowledgeNode,
+    VerificationStatus,
+)
 from personlogy.domain.relation.models import Relation, RelationType
 from personlogy.domain.source.conversation import Conversation, ConversationMessage
 from personlogy.domain.source.models import (
@@ -48,6 +52,12 @@ from personlogy.domain.source.models import (
     SourceKind,
     SourceVersion,
 )
+from personlogy.domain.writeback.models import (
+    CandidateRef,
+    WritebackItem,
+    WritebackRecord,
+    WritebackStatus,
+)
 from personlogy.ports.queue import JobQueue
 from personlogy.ports.repositories import (
     GovernanceRepository,
@@ -55,6 +65,7 @@ from personlogy.ports.repositories import (
     KnowledgeRepository,
     SourceRepository,
 )
+from personlogy.ports.writeback import WritebackRepository
 from personlogy.shared.errors import DomainValidationError
 
 __all__ = [
@@ -65,25 +76,41 @@ __all__ = [
     "GelStore",
     "GelUnitOfWork",
     "GelUnitOfWorkFactory",
+    "GelWritebackRepository",
 ]
 
 
-def _json(value: dict[str, object]) -> str:
+def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
 def _mapping(value: str) -> dict[str, object]:
     parsed = json.loads(value)
     if not isinstance(parsed, dict):
-        raise ValueError("stored JSON value is not an object")
+        raise TypeError("stored JSON value is not an object")
     return parsed
 
 
 def _mappings(value: str) -> tuple[dict[str, object], ...]:
     parsed = json.loads(value)
     if not isinstance(parsed, list):
-        raise ValueError("stored JSON value is not a list")
+        raise TypeError("stored JSON value is not a list")
     return tuple(item for item in parsed if isinstance(item, dict))
+
+
+def _candidate_refs(value: str) -> tuple[CandidateRef, ...]:
+    return tuple(
+        CandidateRef(
+            candidate_id=UUID(str(item["candidate_id"])),
+            candidate_kind=CandidateKind(str(item["candidate_kind"])),
+            expected_review_version=_optional_int(item.get("expected_review_version")),
+        )
+        for item in _mappings(value)
+    )
+
+
+def _optional_int(value: object) -> int | None:
+    return int(str(value)) if value is not None else None
 
 
 def _now() -> datetime:
@@ -111,7 +138,7 @@ class GelStore:
     async def ping(self) -> bool:
         try:
             return bool(await self._client.query_single("select 1"))
-        except Exception:
+        except gel_errors.EdgeDBError:
             return False
 
 
@@ -1067,6 +1094,223 @@ class GelGovernanceRepository:
         ]
 
 
+class GelWritebackRepository(WritebackRepository):
+    def __init__(self, tx: Any) -> None:
+        self._tx = tx
+
+    @staticmethod
+    def _values(record: WritebackRecord) -> dict[str, Any]:
+        return {
+            "id": record.id,
+            "project_id": record.project_id,
+            "governance_run_id": record.governance_run_id,
+            "schema_namespace": record.schema_namespace,
+            "schema_version": record.schema_version,
+            "idempotency_key": record.idempotency_key,
+            "request_digest": record.request_digest,
+            "candidate_digest": record.candidate_digest,
+            "candidates": _json(
+                [
+                    {
+                        "candidate_id": str(item.candidate_id),
+                        "candidate_kind": item.candidate_kind.value,
+                        "expected_review_version": item.expected_review_version,
+                    }
+                    for item in record.candidates
+                ]
+            ),
+            "status": record.status.value,
+            "effects_job_id": record.effects_job_id,
+            "okf_object_key": record.okf_object_key,
+            "index_job_id": record.index_job_id,
+            "error_code": record.error_code,
+            "error_digest": record.error_digest,
+            "created_at": record.created_at,
+            "committed_at": record.committed_at,
+            "completed_at": record.completed_at,
+        }
+
+    async def add(self, record: WritebackRecord) -> None:
+        try:
+            await self._tx.execute(
+                """
+                insert WritebackRecord {
+                  id := <uuid>$id,
+                  project := (select Project filter .id = <uuid>$project_id),
+                  governance_run := (select GovernanceRun filter .id = <uuid>$governance_run_id),
+                  schema_namespace := <str>$schema_namespace,
+                  schema_version := <int32>$schema_version,
+                  idempotency_key := <str>$idempotency_key,
+                  request_digest := <str>$request_digest,
+                  candidate_digest := <str>$candidate_digest,
+                  candidates := <json>$candidates,
+                  status := <default::WritebackStatus>$status,
+                  effects_job_id := <optional uuid>$effects_job_id,
+                  okf_object_key := <optional str>$okf_object_key,
+                  index_job_id := <optional uuid>$index_job_id,
+                  error_code := <optional str>$error_code,
+                  error_digest := <optional str>$error_digest,
+                  created_at := <datetime>$created_at,
+                  committed_at := <optional datetime>$committed_at,
+                  completed_at := <optional datetime>$completed_at,
+                }
+                """,
+                **self._values(record),
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(
+                error, "writeback idempotency key or parent already exists"
+            ) from error
+
+    async def get(self, record_id: UUID) -> WritebackRecord | None:
+        row = await self._tx.query_single(
+            """
+            select WritebackRecord {
+              id, schema_namespace, schema_version, idempotency_key, request_digest,
+              candidate_digest, candidates, status, effects_job_id, okf_object_key,
+              index_job_id, error_code, error_digest, created_at, committed_at, completed_at,
+              project: { id }, governance_run: { id },
+            }
+            filter .id = <uuid>$id
+            limit 1
+            """,
+            id=record_id,
+        )
+        return _writeback_from_row(row) if row is not None else None
+
+    async def get_by_idempotency_key(self, key: str) -> WritebackRecord | None:
+        row = await self._tx.query_single(
+            """
+            select WritebackRecord {
+              id, schema_namespace, schema_version, idempotency_key, request_digest,
+              candidate_digest, candidates, status, effects_job_id, okf_object_key,
+              index_job_id, error_code, error_digest, created_at, committed_at, completed_at,
+              project: { id }, governance_run: { id },
+            }
+            filter .idempotency_key = <str>$key
+            limit 1
+            """,
+            key=key,
+        )
+        return _writeback_from_row(row) if row is not None else None
+
+    async def save(self, record: WritebackRecord) -> None:
+        try:
+            rows = await self._tx.query(
+                """
+                update WritebackRecord
+                filter .id = <uuid>$id
+                set {
+                  status := <default::WritebackStatus>$status,
+                  effects_job_id := <optional uuid>$effects_job_id,
+                  okf_object_key := <optional str>$okf_object_key,
+                  index_job_id := <optional uuid>$index_job_id,
+                  error_code := <optional str>$error_code,
+                  error_digest := <optional str>$error_digest,
+                  committed_at := <optional datetime>$committed_at,
+                  completed_at := <optional datetime>$completed_at,
+                }
+                """,
+                id=record.id,
+                status=record.status.value,
+                effects_job_id=record.effects_job_id,
+                okf_object_key=record.okf_object_key,
+                index_job_id=record.index_job_id,
+                error_code=record.error_code,
+                error_digest=record.error_digest,
+                committed_at=record.committed_at,
+                completed_at=record.completed_at,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(error, "writeback record update failed") from error
+        if not rows:
+            raise DomainValidationError("writeback record does not exist")
+
+    async def add_item(self, item: WritebackItem) -> None:
+        try:
+            await self._tx.execute(
+                """
+                insert WritebackItem {
+                  id := <uuid>$id,
+                  record := (select WritebackRecord filter .id = <uuid>$record_id),
+                  candidate_id := <uuid>$candidate_id,
+                  candidate_kind := <default::CandidateKind>$candidate_kind,
+                  before_status := <default::VerificationStatus>$before_status,
+                  after_status := <default::VerificationStatus>$after_status,
+                  before_digest := <str>$before_digest,
+                  after_digest := <str>$after_digest,
+                  result := <str>$result,
+                  created_at := <datetime>$created_at,
+                }
+                """,
+                id=item.id,
+                record_id=item.record_id,
+                candidate_id=item.candidate_id,
+                candidate_kind=item.candidate_kind.value,
+                before_status=item.before_status.value,
+                after_status=item.after_status.value,
+                before_digest=item.before_digest,
+                after_digest=item.after_digest,
+                result=item.result,
+                created_at=item.created_at,
+            )
+        except gel_errors.EdgeDBError as error:
+            raise _constraint_error(
+                error, "writeback item record does not exist or already exists"
+            ) from error
+
+    async def list_items(self, record_id: UUID) -> list[WritebackItem]:
+        rows = await self._tx.query(
+            """
+            select WritebackItem {
+              id, candidate_id, candidate_kind, before_status, after_status,
+              before_digest, after_digest, result, created_at,
+            }
+            filter .record.id = <uuid>$record_id
+            order by .created_at asc
+            """,
+            record_id=record_id,
+        )
+        return [
+            WritebackItem(
+                record_id=record_id,
+                candidate_id=row.candidate_id,
+                candidate_kind=CandidateKind(row.candidate_kind),
+                before_status=VerificationStatus(row.before_status),
+                after_status=VerificationStatus(row.after_status),
+                before_digest=row.before_digest,
+                after_digest=row.after_digest,
+                result=row.result,
+                id=row.id,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+
+
+def _writeback_from_row(row: Any) -> WritebackRecord:
+    return WritebackRecord(
+        project_id=row.project.id,
+        governance_run_id=row.governance_run.id,
+        schema_namespace=row.schema_namespace,
+        schema_version=row.schema_version,
+        idempotency_key=row.idempotency_key,
+        request_digest=row.request_digest,
+        candidate_digest=row.candidate_digest,
+        candidates=_candidate_refs(row.candidates),
+        status=WritebackStatus(row.status),
+        effects_job_id=row.effects_job_id,
+        okf_object_key=row.okf_object_key,
+        index_job_id=row.index_job_id,
+        error_code=row.error_code,
+        error_digest=row.error_digest,
+        id=row.id,
+        created_at=row.created_at,
+        committed_at=row.committed_at,
+        completed_at=row.completed_at,
+    )
+
+
 class GelJobRepository:
     def __init__(self, tx: Any) -> None:
         self._tx = tx
@@ -1216,10 +1460,11 @@ class GelUnitOfWork:
         self.sources: SourceRepository
         self.knowledge: KnowledgeRepository
         self.governance: GovernanceRepository
+        self.writebacks: WritebackRepository
         self.jobs: JobRepository
         self._committed = False
 
-    async def __aenter__(self) -> GelUnitOfWork:
+    async def __aenter__(self) -> Self:
         # ``client.transaction()`` is an async retry iterator: each iteration
         # yields a managed transaction that commits on clean exit and rolls
         # back on exception. We take one iteration and drive it manually so
@@ -1233,6 +1478,7 @@ class GelUnitOfWork:
         self.sources = GelSourceRepository(tx)
         self.knowledge = GelKnowledgeRepository(tx)
         self.governance = GelGovernanceRepository(tx)
+        self.writebacks = GelWritebackRepository(tx)
         self.jobs = GelJobRepository(tx)
         return self
 

@@ -27,6 +27,11 @@ from personlogy.application.replay import ReplayService
 from personlogy.application.retrieval import RetrievalService
 from personlogy.application.schema_management import SchemaChangeService
 from personlogy.application.source_read import SourceReadService
+from personlogy.application.writeback import (
+    LocalWritebackAuthorizer,
+    RegistrySchemaWritebackValidator,
+    WritebackService,
+)
 from personlogy.ports.audit import AuditSink
 from personlogy.ports.lineage import LineageStore
 from personlogy.ports.queue import JobQueue
@@ -106,6 +111,21 @@ compilation_service = CompilationService(
 governance_service = GovernanceService(
     uow_factory, audit_sink=audit_sink, lineage_store=lineage_store
 )
+feature_store: SQLiteFeatureStore | None = None
+schema_registry: SQLiteSchemaRegistry | None = None
+if isinstance(store, SQLiteStore):
+    feature_store = SQLiteFeatureStore(store.path)
+    schema_registry = SQLiteSchemaRegistry(feature_store)
+writeback_service = WritebackService(
+    uow_factory,
+    LocalFileStorage(settings.pdf_storage_root),
+    authorizer=LocalWritebackAuthorizer(environment=settings.environment),
+    schema_validator=(
+        RegistrySchemaWritebackValidator(schema_registry) if schema_registry is not None else None
+    ),
+    audit_sink=audit_sink,
+    lineage_store=lineage_store,
+)
 schema_service: SchemaChangeService | None = None
 
 
@@ -123,9 +143,10 @@ class _EmptyRetrievalReader:
 
 retrieval_indexer: SQLiteRetrievalIndexer | None = None
 if isinstance(store, SQLiteStore):
-    feature_store = SQLiteFeatureStore(store.path)
+    assert feature_store is not None
+    assert schema_registry is not None
     schema_service = SchemaChangeService(
-        SQLiteSchemaRegistry(feature_store), audit_sink=audit_sink
+        schema_registry, audit_sink=audit_sink
     )
     retrieval_indexer = SQLiteRetrievalIndexer(
         feature_store, audit_sink=audit_sink, lineage_store=lineage_store

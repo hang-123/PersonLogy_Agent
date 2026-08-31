@@ -7,11 +7,22 @@ from uuid import UUID
 import structlog
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.pdf import PdfPlumberParser
-from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
-from personlogy.adapters.sqlite_features import SQLiteFeatureStore, SQLiteRetrievalIndexer
-from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
+from personlogy.adapters.sqlite import (
+    SQLiteJobQueue,
+    SQLiteStore,
+    SQLiteUnitOfWorkFactory,
+)
+from personlogy.adapters.sqlite_features import (
+    SQLiteFeatureStore,
+    SQLiteRetrievalIndexer,
+)
+from personlogy.application.compilation import (
+    CompilationService,
+    DocumentHeuristicCompiler,
+)
 from personlogy.application.ingestion import PdfImportService
 from personlogy.application.orchestration import JobService
+from personlogy.application.writeback import LocalWritebackAuthorizer, WritebackService
 from personlogy.ports.queue import JobQueue
 from personlogy.ports.unit_of_work import UnitOfWorkFactory
 
@@ -71,6 +82,11 @@ async def run_worker() -> None:
         DocumentHeuristicCompiler(),
         LocalFileStorage(PDF_STORAGE_ROOT),
     )
+    writeback_service = WritebackService(
+        uow_factory,
+        LocalFileStorage(PDF_STORAGE_ROOT),
+        authorizer=LocalWritebackAuthorizer(environment=os.getenv("PKS_ENVIRONMENT", "local")),
+    )
     logger = structlog.get_logger()
     logger.info(
         "worker_started",
@@ -110,6 +126,12 @@ async def run_worker() -> None:
                     count = await retrieval_indexer.rebuild_project(project_id)
                     await service.report_progress(
                         job.id, 90, f"retrieval_documents_indexed:{count}"
+                    )
+                elif job.kind == "knowledge.writeback.effects":
+                    await service.report_progress(job.id, 20, "publishing_writeback_okf")
+                    record = await writeback_service.process_effects_job(job)
+                    await service.report_progress(
+                        job.id, 90, f"writeback_completed:{record.id}"
                     )
                 else:
                     await service.report_progress(job.id, 10, "accepted")

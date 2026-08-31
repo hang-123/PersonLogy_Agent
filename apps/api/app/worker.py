@@ -14,6 +14,7 @@ from app.runtime import (
     replay_service,
     retrieval_indexer,
     stage_runner,
+    writeback_service,
 )
 
 
@@ -94,6 +95,18 @@ async def run_worker() -> None:
                     )
                     await job_service.report_progress(
                         job.id, 90, f"retrieval_documents_indexed:{count}"
+                    )
+                elif job.kind == "knowledge.writeback.effects":
+                    await job_service.report_progress(job.id, 20, "publishing_writeback_okf")
+                    record = await stage_runner.run(
+                        stage="knowledge.writeback.effects",
+                        job=job,
+                        operation=partial(writeback_service.process_effects_job, job),
+                    )
+                    await job_service.report_progress(
+                        job.id,
+                        90,
+                        f"writeback_completed:{record.id}",
                     )
                 else:
                     await job_service.report_progress(job.id, 10, "accepted")

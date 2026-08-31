@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from types import TracebackType
+from typing import Self
 from uuid import UUID
 
 from personlogy.domain.governance.models import (
@@ -21,6 +22,7 @@ from personlogy.domain.source.models import (
     SourceKind,
     SourceVersion,
 )
+from personlogy.domain.writeback.models import WritebackItem, WritebackRecord
 from personlogy.shared.errors import DomainValidationError
 
 
@@ -43,6 +45,8 @@ class InMemoryStore:
     jobs: dict[UUID, Job] = field(default_factory=dict)
     conversations: dict[UUID, Conversation] = field(default_factory=dict)
     messages: dict[UUID, ConversationMessage] = field(default_factory=dict)
+    writeback_records: dict[UUID, WritebackRecord] = field(default_factory=dict)
+    writeback_items: dict[UUID, WritebackItem] = field(default_factory=dict)
 
     def clone(self) -> "InMemoryStore":
         return InMemoryStore(
@@ -63,6 +67,8 @@ class InMemoryStore:
             jobs=self.jobs.copy(),
             conversations=self.conversations.copy(),
             messages=self.messages.copy(),
+            writeback_records=self.writeback_records.copy(),
+            writeback_items=self.writeback_items.copy(),
         )
 
 
@@ -325,6 +331,58 @@ class InMemoryGovernanceRepository:
         return tasks[:limit]
 
 
+class InMemoryWritebackRepository:
+    def __init__(self, store: InMemoryStore) -> None:
+        self._store = store
+
+    async def add(self, record: WritebackRecord) -> None:
+        if record.idempotency_key in {
+            item.idempotency_key for item in self._store.writeback_records.values()
+        }:
+            raise DomainValidationError("writeback idempotency key already exists")
+        if record.project_id not in self._store.projects:
+            raise DomainValidationError("writeback project does not exist")
+        if record.governance_run_id not in self._store.governance_runs:
+            raise DomainValidationError("writeback governance run does not exist")
+        self._store.writeback_records[record.id] = record
+
+    async def get(self, record_id: UUID) -> WritebackRecord | None:
+        return self._store.writeback_records.get(record_id)
+
+    async def get_by_idempotency_key(self, key: str) -> WritebackRecord | None:
+        return next(
+            (
+                item
+                for item in self._store.writeback_records.values()
+                if item.idempotency_key == key
+            ),
+            None,
+        )
+
+    async def save(self, record: WritebackRecord) -> None:
+        if record.id not in self._store.writeback_records:
+            raise DomainValidationError("writeback record does not exist")
+        self._store.writeback_records[record.id] = record
+
+    async def add_item(self, item: WritebackItem) -> None:
+        if item.record_id not in self._store.writeback_records:
+            raise DomainValidationError("writeback record does not exist")
+        if any(
+            existing.record_id == item.record_id
+            and existing.candidate_id == item.candidate_id
+            and existing.candidate_kind is item.candidate_kind
+            for existing in self._store.writeback_items.values()
+        ):
+            raise DomainValidationError("writeback item already exists")
+        self._store.writeback_items[item.id] = item
+
+    async def list_items(self, record_id: UUID) -> list[WritebackItem]:
+        return sorted(
+            (item for item in self._store.writeback_items.values() if item.record_id == record_id),
+            key=lambda item: item.created_at,
+        )
+
+
 class InMemoryJobRepository:
     def __init__(self, store: InMemoryStore) -> None:
         self._store = store
@@ -360,10 +418,11 @@ class InMemoryUnitOfWork:
         self.sources = InMemorySourceRepository(self._working_store)
         self.knowledge = InMemoryKnowledgeRepository(self._working_store)
         self.governance = InMemoryGovernanceRepository(self._working_store)
+        self.writebacks = InMemoryWritebackRepository(self._working_store)
         self.jobs = InMemoryJobRepository(self._working_store)
         self._committed = False
 
-    async def __aenter__(self) -> "InMemoryUnitOfWork":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(
