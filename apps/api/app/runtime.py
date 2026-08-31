@@ -165,6 +165,29 @@ class _EmptyRetrievalReader:
 
 
 retrieval_indexer: SQLiteRetrievalIndexer | None = None
+# Optional OpenAI-compatible provider instances (see .env.example). The current
+# retrieval pipeline is BM25-first (SQLite); embedding/rerank wiring for a true
+# hybrid reader is the next step and is exposed here so services can consume them.
+embedding_provider: EmbeddingProvider | None = None
+reranker: Reranker | None = None
+if settings.embedding_enabled():
+    embedding_provider = cast(
+        EmbeddingProvider,
+        OpenAICompatEmbeddingProvider(
+            base_url=settings.embedding_base_url,
+            api_key=settings.embedding_api_key,
+            model=settings.embedding_model,
+        ),
+    )
+if settings.rerank_enabled():
+    reranker = cast(
+        Reranker,
+        OpenAICompatReranker(
+            base_url=settings.rerank_base_url,
+            api_key=settings.rerank_api_key,
+            model=settings.rerank_model,
+        ),
+    )
 if isinstance(store, SQLiteStore):
     assert feature_store is not None
     assert schema_registry is not None

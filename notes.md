@@ -71,3 +71,16 @@
 - **core 包 ruff 17 项清零**：10 个 I001 导入排序 + 1 个 RUF100 自动修复；6 个 TRY004 改为 `TypeError`（存储数据非预期类型场景）；1 个 BLE001 加 `noqa`（MetricsProjector 有意捕获所有事件级异常以记录失败并停止该批）。core `ruff check src` 全绿、mypy 85 files 通过。
 - **Gel Writeback 全链路端到端用例**：新增 `test_writeback_full_pipeline_on_gel`（真实 Gel 实例：submit → effects → OKF 产物落盘 + provenance 校验 → `retrieval.index` Job 触发 → 候选状态推进 `ready_for_writeback`；含幂等重提）。Gel 测试组 13 passed（9 adapter + 4 contract），全量 pytest 72 passed。
 - **Gel 迁移流程固化**：新增 `GEL/scripts/gel-migrate.ps1`（应用现有迁移 / `-Create` 基于 dbschema 差异生成新迁移 / `-Seed`；处理 CLI 无差异 exit 4；校验 allow_user_specified_id）；`GEL/README.md` 增补一键执行说明与本机 my-gel DSN。
+
+### 2026-08-31（补充：LLM 接入骨架）
+
+- 新增 `packages/personlogy_core/src/personlogy/adapters/llm_openai.py`：
+  - `OpenAICompatCompiler`：实现 `KnowledgeCompiler` Port，把 ContentBlock 编译为候选知识（chat/completions，严格 JSON 输出、quote 必须可回源、关系类型白名单）。
+  - `OpenAICompatEmbeddingProvider`：实现 `EmbeddingProvider` Port（/embeddings）。
+  - `OpenAICompatReranker`：实现新增 `Reranker` Port（Cohere 兼容 /rerank）。
+  - 均支持 `transport=` 注入（httpx MockTransport 单测用，不消耗 token）。
+- `apps/api/app/core/config.py` 新增 `PKS_LLM_*` / `PKS_EMBEDDING_*` / `PKS_RERANK_*` 配置项与 `llm_enabled()/embedding_enabled()/rerank_enabled()`。
+- `apps/api/app/runtime.py` 条件装配：`PKS_LLM_PROVIDER=openai_compatible` 时编译用 `OpenAICompatCompiler`（否则启发式）；embedding/reranker 实例化后暴露供后续混合检索消费。
+- `.env.example` 与 `docs/engineering/llm-integration.md` 记录供应商示例（DeepSeek/OpenAI/Ollama/通义/智谱）与验证方式。
+- 测试：`apps/api/tests/test_llm_adapters.py` 6 用例（mock HTTP）全过；全量 pytest 78 passed；mypy/ruff 全绿。
+- 状态：**知识编译可切真实 LLM**；向量/重排已装配未消费（混合检索 reader 为下一步）。

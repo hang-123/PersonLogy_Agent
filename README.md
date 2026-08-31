@@ -54,6 +54,7 @@ Schema：LLM 生成 Gel Migration → 校验/审批 → Migration Tool 执行
 - [代码目录与重构约定](docs/engineering/code-structure.md)
 - [项目开发计划](docs/plans/development-plan.md)
 - [系统图稿](docs/architecture/diagrams.md)
+- [LLM / Embedding / Rerank 接入指南](docs/engineering/llm-integration.md)
 
 ## 开发约定
 

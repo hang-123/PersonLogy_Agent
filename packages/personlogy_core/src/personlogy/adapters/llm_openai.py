@@ -22,12 +22,7 @@ from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode
 from personlogy.domain.relation.models import Relation, RelationType
 from personlogy.domain.source.models import ContentBlock
 from personlogy.ports.compilation import CompilationBundle
-from personlogy.ports.retrieval import (
-    EmbeddingProvider,
-    EmbeddingVector,
-    Reranker,
-    RetrievalHit,
-)
+from personlogy.ports.retrieval import EmbeddingVector, RetrievalHit
 from personlogy.shared.errors import DomainValidationError
 
 DEFAULT_TIMEOUT_SECONDS = 60.0
@@ -86,6 +81,7 @@ def _completion_request(
     temperature: float,
     timeout: float,
     max_tokens: int = 8192,
+    transport: httpx.BaseTransport | None = None,
 ) -> dict[str, object]:
     url = base_url.rstrip("/") + "/chat/completions"
     payload: dict[str, object] = {
@@ -94,12 +90,20 @@ def _completion_request(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    response = httpx.post(
-        url,
-        headers=_auth_headers(api_key),
-        json=payload,
-        timeout=timeout,
-    )
+    if transport is not None:
+        response = httpx.Client(transport=transport, base_url=base_url).post(
+            url,
+            headers=_auth_headers(api_key),
+            json=payload,
+            timeout=timeout,
+        )
+    else:
+        response = httpx.post(
+            url,
+            headers=_auth_headers(api_key),
+            json=payload,
+            timeout=timeout,
+        )
     response.raise_for_status()
     data = cast(dict[str, Any], response.json())
     try:
@@ -125,6 +129,7 @@ class OpenAICompatCompiler:
         model: str,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         temperature: float = 0.2,
+        transport: httpx.BaseTransport | None = None,
     ) -> None:
         if not base_url.strip() or not model.strip():
             raise DomainValidationError("LLM base_url and model are required")
@@ -133,13 +138,11 @@ class OpenAICompatCompiler:
         self._model = model
         self._timeout = timeout_seconds
         self._temperature = temperature
+        self._transport = transport
+        self.model_name = model
 
     prompt_version = "p5-llm-openai-v1"
-    model_name: str
-
-    @property
-    def model_name(self) -> str:  # type: ignore[no-redef]
-        return self._model
+    model_name: str = "openai-compatible"
 
     def compile(
         self, *, project_id: UUID, blocks: tuple[ContentBlock, ...]
@@ -159,6 +162,7 @@ class OpenAICompatCompiler:
             ],
             temperature=self._temperature,
             timeout=self._timeout,
+            transport=self._transport,
         )
         return _parse_bundle(parsed, project_id=project_id, blocks=blocks, model=self._model)
 
@@ -173,6 +177,7 @@ class OpenAICompatEmbeddingProvider:
         api_key: str,
         model: str,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not base_url.strip() or not model.strip():
             raise DomainValidationError("embedding base_url and model are required")
@@ -180,6 +185,7 @@ class OpenAICompatEmbeddingProvider:
         self._api_key = api_key
         self._model = model
         self._timeout = timeout_seconds
+        self._transport = transport
 
     @property
     def model_name(self) -> str:
@@ -191,7 +197,11 @@ class OpenAICompatEmbeddingProvider:
         if not texts:
             return ()
         url = self._base_url.rstrip("/") + "/embeddings"
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        if self._transport is not None:
+            client = httpx.AsyncClient(transport=self._transport, timeout=self._timeout)
+        else:
+            client = httpx.AsyncClient(timeout=self._timeout)
+        async with client:
             response = await client.post(
                 url,
                 headers=_auth_headers(self._api_key),
@@ -227,6 +237,7 @@ class OpenAICompatReranker:
         api_key: str,
         model: str,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not base_url.strip() or not model.strip():
             raise DomainValidationError("rerank base_url and model are required")
@@ -234,6 +245,7 @@ class OpenAICompatReranker:
         self._api_key = api_key
         self._model = model
         self._timeout = timeout_seconds
+        self._transport = transport
 
     @property
     def model_name(self) -> str:
@@ -252,7 +264,11 @@ class OpenAICompatReranker:
             return ()
         url = self._base_url.rstrip("/") + "/rerank"
         documents = [hit.statement for hit in hits]
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        if self._transport is not None:
+            client = httpx.AsyncClient(transport=self._transport, timeout=self._timeout)
+        else:
+            client = httpx.AsyncClient(timeout=self._timeout)
+        async with client:
             response = await client.post(
                 url,
                 headers=_auth_headers(self._api_key),
@@ -283,7 +299,6 @@ def _parse_bundle(
     blocks: tuple[ContentBlock, ...],
     model: str,
 ) -> CompilationBundle:
-    block_ids = {block.id: block for block in blocks}
     nodes_raw = parsed.get("nodes")
     claims_raw = parsed.get("claims")
     relations_raw = parsed.get("relations")

@@ -1,0 +1,22 @@
+{
+  "okf_version": "0.2",
+  "provenance": {
+    "writeback_id": "41af3eb5-58b5-4dec-8077-7ef7a6c0d0c2",
+    "governance_run_id": "e1372ad3-d51c-42b1-9f01-6b8271deb15a",
+    "project_id": "38d56791-7e61-46ed-b473-5e8277b66e6e",
+    "schema_namespace": "personlogy",
+    "schema_version": 1,
+    "candidate_digest": "9780467ed463d228077a36626b917667461829c81e71f79619ef57f6b9839f03",
+    "generated_at": "2026-08-31T13:35:56.177079+00:00"
+  },
+  "candidates": [
+    {
+      "candidate_id": "996ead9d-057e-4a19-aed2-2048c6bd5dd5",
+      "candidate_kind": "claim",
+      "status": "ready_for_writeback",
+      "statement": "管道声明",
+      "before_digest": "fc0ed2ab2794e73f33758274918c162a6c5689ce2086c3d001ae05bfad766e62",
+      "after_digest": "2a9cb62d36c72381d0cd4660df855c307ff7b1d942e6e33990aad2d0766c1a49"
+    }
+  ]
+}
