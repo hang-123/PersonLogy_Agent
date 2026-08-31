@@ -19,8 +19,11 @@ import type {
   Job,
   LineageTrace,
   PdfImportResponse,
+  EvidenceDetail,
   RetrievalSearchResponse,
+  RetrievalAnswerResponse,
   ReviewTask,
+  SourceVersionDetail,
 } from "./types";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/v1";
@@ -129,6 +132,30 @@ export const api = {
           expand_relations: payload.expandRelations ?? false,
         }),
     ),
+
+  answerRetrieval: (payload: { projectId: string; question: string; limit?: number; expandRelations?: boolean }) =>
+    request<RetrievalAnswerResponse>("/retrieval/answer", {
+      method: "POST",
+      body: JSON.stringify({
+        project_id: payload.projectId,
+        question: payload.question,
+        limit: payload.limit ?? 5,
+        expand_relations: payload.expandRelations ?? false,
+      }),
+    }),
+
+  getSourceVersion: (sourceVersionId: string, projectId: string) =>
+    request<SourceVersionDetail>(
+      "/source-versions/" + encodeURIComponent(sourceVersionId) + queryString({ project_id: projectId }),
+    ),
+
+  getEvidence: (evidenceId: string, projectId: string) =>
+    request<EvidenceDetail>(
+      "/evidence/" + encodeURIComponent(evidenceId) + queryString({ project_id: projectId }),
+    ),
+
+  sourceVersionContentUrl: (sourceVersionId: string, projectId: string) =>
+    apiBaseUrl + "/source-versions/" + encodeURIComponent(sourceVersionId) + "/content" + queryString({ project_id: projectId }),
 
   traceClaim: (payload: { projectId: string; claimId: string; limit?: number }) =>
     request<LineageTrace>(

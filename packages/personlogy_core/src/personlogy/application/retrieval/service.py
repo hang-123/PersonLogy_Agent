@@ -1,5 +1,6 @@
 """Hybrid retrieval application service."""
 
+from dataclasses import dataclass
 from time import monotonic
 from uuid import UUID
 
@@ -11,6 +12,15 @@ from personlogy.ports.lineage import LineageStore
 from personlogy.ports.retrieval import RetrievalHit, RetrievalReader
 from personlogy.shared.errors import DomainValidationError
 from personlogy.shared.trace import TraceContext
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalAnswer:
+    project_id: UUID
+    question: str
+    answer: str
+    hits: tuple[RetrievalHit, ...]
+    uncertainty: tuple[str, ...]
 
 
 class RetrievalService:
@@ -115,5 +125,43 @@ class RetrievalService:
                 )
         return hits
 
+    async def answer(
+        self,
+        *,
+        project_id: UUID,
+        question: str,
+        limit: int = 5,
+        expand_relations: bool = False,
+    ) -> RetrievalAnswer:
+        normalized_question = question.strip()
+        hits = await self.search(
+            project_id=project_id,
+            query=normalized_question,
+            limit=limit,
+            expand_relations=expand_relations,
+        )
+        if not hits:
+            return RetrievalAnswer(
+                project_id=project_id,
+                question=normalized_question,
+                answer="当前项目知识库中没有找到可直接支持该问题的已索引结论。",
+                hits=(),
+                uncertainty=("未找到匹配的已索引 Claim; 答案需要更多来源或先完成索引。",),
+            )
 
-__all__ = ["RetrievalService"]
+        answer_lines = [f"基于当前项目检索到 {len(hits)} 条相关结论:"]
+        uncertainty: list[str] = []
+        for index, hit in enumerate(hits, start=1):
+            answer_lines.append(f"{index}. {hit.statement}")
+            if not hit.evidence:
+                uncertainty.append(f"结论“{hit.statement}”没有返回 Citation, 无法完成来源核验。")
+        return RetrievalAnswer(
+            project_id=project_id,
+            question=normalized_question,
+            answer="\n".join(answer_lines),
+            hits=hits,
+            uncertainty=tuple(uncertainty),
+        )
+
+
+__all__ = ["RetrievalAnswer", "RetrievalService"]

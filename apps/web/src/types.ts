@@ -114,6 +114,46 @@ export interface RetrievalSearchResponse {
   hits: RetrievalHit[];
 }
 
+export interface ContentBlock {
+  id: string;
+  source_version_id: string;
+  ordinal: number;
+  content: string;
+  content_hash: string;
+  locator: Record<string, unknown>;
+}
+
+export interface SourceVersionDetail {
+  id: string;
+  source_id: string;
+  version: number;
+  content_hash: string;
+  created_at: string;
+  content_available: boolean;
+  blocks: ContentBlock[];
+}
+
+export interface EvidenceDetail {
+  id: string;
+  quote: string;
+  locator: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  content_block: ContentBlock;
+  source_version: Omit<SourceVersionDetail, "blocks">;
+}
+
+export interface RetrievalAnswerResponse {
+  project_id: string;
+  question: string;
+  answer: string;
+  mode: string;
+  hit_count: number;
+  hits: RetrievalHit[];
+  citations: Citation[];
+  relations: RelationPath[];
+  uncertainty: string[];
+}
+
 export interface LineageLink {
   link_id: string;
   project_id: string;

@@ -464,6 +464,28 @@ class GelSourceRepository:
                 error, "content block source version does not exist or ordinal already exists"
             ) from error
 
+    async def get_block(self, block_id: UUID) -> ContentBlock | None:
+        row = await self._tx.query_single(
+            """
+            select ContentBlock {
+              id, ordinal, content, content_hash, locator, source_version: { id },
+            }
+            filter .id = <uuid>$id
+            limit 1
+            """,
+            id=block_id,
+        )
+        if row is None:
+            return None
+        return ContentBlock(
+            source_version_id=row.source_version.id,
+            ordinal=row.ordinal,
+            content=row.content,
+            content_hash=row.content_hash,
+            locator=_mapping(row.locator),
+            id=row.id,
+        )
+
     async def list_blocks(self, source_version_id: UUID) -> list[ContentBlock]:
         rows = await self._tx.query(
             """
@@ -580,6 +602,27 @@ class GelKnowledgeRepository:
             )
         except gel_errors.EdgeDBError as error:
             raise _constraint_error(error, "citation content block does not exist") from error
+
+    async def get_citation(self, citation_id: UUID) -> Citation | None:
+        row = await self._tx.query_single(
+            """
+            select Citation {
+              id, quote, locator, metadata, content_block: { id },
+            }
+            filter .id = <uuid>$id
+            limit 1
+            """,
+            id=citation_id,
+        )
+        if row is None:
+            return None
+        return Citation(
+            content_block_id=row.content_block.id,
+            quote=row.quote,
+            locator=_mapping(row.locator),
+            id=row.id,
+            metadata=_mapping(row.metadata),
+        )
 
     async def add_claim(self, claim: Claim) -> None:
         try:

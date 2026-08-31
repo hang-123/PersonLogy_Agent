@@ -1,6 +1,6 @@
 # 前端交互落地计划
 
-> 对齐来源：`docs/plans/development-plan.md` 的 P9；当前状态：FE-00/FE-01/FE-02/FE-03/FE-04/FE-05 已完成，FE-06 等待问答接口。
+> 对齐来源：`docs/plans/development-plan.md` 的 P9；当前状态：FE-00 至 FE-06 已完成，进入 FE-07 整体验收。
 
 ## 1. P9 目标与退出标准
 
@@ -90,7 +90,7 @@ P9 退出标准：用户能够完成导入、审核、检索和回溯；关系�
 
 仍需 API 补齐：
 
-- ReviewTask 详情还需要返回 source/version、evidence/citation，才能恢复中栏原文与 Evidence 展示。
+- ReviewTask 详情已返回 before/after 版本快照；来源正文与 Evidence 详情由独立 source/evidence endpoint 提供。
 - 需要明确 approved/rejected/revised 与候选状态的映射，以及审核后是否写入正式知识。
 - 如果要保留“合并到已有对象”，需要恢复对象搜索和 merge endpoint；当前 API 清单中未发现可直接使用的对象/候选接口。
 
@@ -143,7 +143,7 @@ P9 退出标准：用户能够完成导入、审核、检索和回溯；关系�
 - UI 展示回答正文、引用编号、来源列表、关系路径和冲突/不确定性提示。
 - 明确加载中、部分结果、失败和空回答状态；不在前端执行 Prompt，不把检索结果伪装成模型回答。
 
-前置 API：当前仓库未发现问答 endpoint，因此 FE-06 排在 FE-04/FE-05 之后，接口未定前只做组件边界和数据类型，不接假数据。
+前置 API：已落地 `POST /v1/retrieval/answer`，前端接入 retrieval-grounded answer、citations、relation paths 和 uncertainty；不接假数据。
 
 ### FE-07：整体验收与质量门
 
@@ -168,6 +168,12 @@ P9 退出标准：用户能够完成导入、审核、检索和回溯；关系�
 | 7 | FE-06/07 | 问答接入（若 API 已就绪）与验收 |
 
 若来源详情接口或 FE-06 问答接口未及时补齐，保留当前已完成的真实链路，并将阻塞项记录为 P9 依赖，不使用生产假数据掩盖缺口。
+
+## P9 Contract Update
+
+- FE-03/FE-04 的来源回溯已具备真实详情链路：source version blocks、Evidence detail 和 PDF content URL 均已接入。
+- FE-06 已落地 `POST /v1/retrieval/answer`，返回 retrieval-grounded answer、hits、citations、relations 和 uncertainty；前端新增独立问答工作台，并从 citations 继续打开正文。
+- 当前回答是确定性的检索结果汇总，不执行前端 Prompt 或伪造模型回答；后续如接入生成模型，应保持 citations 和 uncertainty 为必返字段。
 
 ## 5. 暂不纳入 P9 第一版
 

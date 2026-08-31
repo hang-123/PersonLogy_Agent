@@ -566,6 +566,21 @@ class SQLiteSourceRepository:
                 "content block source version does not exist or ordinal already exists"
             ) from error
 
+    async def get_block(self, block_id: UUID) -> ContentBlock | None:
+        row = self._connection.execute(
+            "SELECT * FROM content_block WHERE id = ?", (_id(block_id),)
+        ).fetchone()
+        if row is None:
+            return None
+        return ContentBlock(
+            source_version_id=UUID(row["source_version_id"]),
+            ordinal=row["ordinal"],
+            content=row["content"],
+            content_hash=row["content_hash"],
+            locator=_mapping(row["locator"]),
+            id=UUID(row["id"]),
+        )
+
     async def list_blocks(self, source_version_id: UUID) -> list[ContentBlock]:
         rows = self._connection.execute(
             "SELECT * FROM content_block WHERE source_version_id = ? ORDER BY ordinal ASC",
@@ -643,6 +658,12 @@ class SQLiteKnowledgeRepository:
             )
         except sqlite3.IntegrityError as error:
             raise DomainValidationError("citation content block does not exist") from error
+
+    async def get_citation(self, citation_id: UUID) -> Citation | None:
+        row = self._connection.execute(
+            "SELECT * FROM citation WHERE id = ?", (_id(citation_id),)
+        ).fetchone()
+        return _citation_from_row(row) if row is not None else None
 
     async def add_claim(self, claim: Claim) -> None:
         try:

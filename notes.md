@@ -54,10 +54,15 @@
 
 ## Implementation Progress
 
+- 本轮新增来源读取契约：`GET /v1/source-versions/{source_version_id}` 返回版本正文 blocks，`GET /v1/evidence/{evidence_id}` 返回 citation、正文 block 和 source version；`GET /v1/source-versions/{source_version_id}/content` 提供受 ID 约束的 PDF 内容读取。
+- 本轮新增 `POST /v1/retrieval/answer`：答案明确标记为 `retrieval-grounded`，同时返回命中结论、去重 citations、关系路径和 uncertainty；当前不接入 LLM，也不把空检索伪装成答案。
+- 前端 Citation inspector 和新增“带来源问答”工作台已接通上述接口，可查看真实来源正文并打开 PDF 内容地址。
+- P9 验收：API 全量 pytest、mypy、Ruff、Web typecheck、Web build 均通过；双服务启动后的 HTTP smoke 通过 health、OpenAPI 新路由、answer 空结果和 Vite shell。当前 Python 环境没有 Playwright，因此未执行浏览器点击级验收。
+
 - FE-00/FE-01/FE-02 已实现：API client、项目上下文、PDF/对话导入中心、Job 列表/详情和轮询。
 - FE-04/FE-05 已实现基础真实链路：Retrieval 搜索、Citation locator 展示、关系路径和当前结果局部 React Flow 图。
 - FE-03 已实现基础真实链路：新增 ReviewTask 详情 API，返回 before/after 候选快照；前端支持批准、驳回、要求修改和 expected_version 版本校验。原文 Evidence 预览仍待来源详情接口。
-- FE-06 暂缓：当前后端未提供问答 endpoint。
+- FE-06 已完成：问答 endpoint、来源详情 endpoint 和前端 Evidence 回溯已接入。
 - 验证通过：`npm ci --no-audit --no-fund`、`npm run typecheck`、`npm run build`、Vite HTTP smoke、`npm audit --omit=dev`。
 - 后端验证通过：`uv run pytest -q`（含 6 个既有条件跳过项）、`uv run mypy app`、治理模块 Ruff 检查。
 - 构建提示主 JS chunk 约 759 KB，关系图依赖接入后体积上升；后续多页面阶段应做动态分包。

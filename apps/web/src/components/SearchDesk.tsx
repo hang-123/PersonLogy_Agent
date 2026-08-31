@@ -4,7 +4,7 @@ import { Background, Controls, ReactFlow, type Edge, type Node } from "@xyflow/r
 import "@xyflow/react/dist/style.css";
 
 import { api } from "../api";
-import type { Citation, ProjectContext, RelationPath, RetrievalHit } from "../types";
+import type { Citation, EvidenceDetail, ProjectContext, RetrievalHit } from "../types";
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -25,35 +25,21 @@ function buildGraph(hits: RetrievalHit[]): { nodes: Node[]; edges: Edge[] } {
   const nodesById = new Map<string, Node>();
   const edgesById = new Map<string, Edge>();
   let nodeIndex = 0;
+  const addNode = (id: string, label: string, border: string) => {
+    if (nodesById.has(id)) return;
+    nodesById.set(id, {
+      id,
+      position: { x: (nodeIndex % 3) * 240, y: Math.floor(nodeIndex / 3) * 120 },
+      data: { label },
+      style: { color: "#272622", background: "#fffdf7", border: `1px solid ${border}`, borderRadius: 2, padding: 12, width: 190 },
+    });
+    nodeIndex += 1;
+  };
   for (const hit of hits) {
-    if (!nodesById.has(hit.subject_id)) {
-      nodesById.set(hit.subject_id, {
-        id: hit.subject_id,
-        position: { x: (nodeIndex % 3) * 240, y: Math.floor(nodeIndex / 3) * 120 },
-        data: { label: hit.subject_title },
-        style: { color: "#272622", background: "#fffdf7", border: "1px solid #36584f", borderRadius: 2, padding: 12, width: 190 },
-      });
-      nodeIndex += 1;
-    }
+    addNode(hit.subject_id, hit.subject_title, "#36584f");
     for (const relation of hit.relations) {
-      if (!nodesById.has(relation.source_id)) {
-        nodesById.set(relation.source_id, {
-          id: relation.source_id,
-          position: { x: (nodeIndex % 3) * 240, y: Math.floor(nodeIndex / 3) * 120 },
-          data: { label: relation.source_title },
-          style: { color: "#272622", background: "#fffdf7", border: "1px solid #b8863d", borderRadius: 2, padding: 12, width: 190 },
-        });
-        nodeIndex += 1;
-      }
-      if (!nodesById.has(relation.target_id)) {
-        nodesById.set(relation.target_id, {
-          id: relation.target_id,
-          position: { x: (nodeIndex % 3) * 240, y: Math.floor(nodeIndex / 3) * 120 },
-          data: { label: relation.target_title },
-          style: { color: "#272622", background: "#fffdf7", border: "1px solid #b8863d", borderRadius: 2, padding: 12, width: 190 },
-        });
-        nodeIndex += 1;
-      }
+      addNode(relation.source_id, relation.source_title, "#b8863d");
+      addNode(relation.target_id, relation.target_title, "#b8863d");
       if (!edgesById.has(relation.relation_id)) {
         edgesById.set(relation.relation_id, {
           id: relation.relation_id,
@@ -75,7 +61,9 @@ export function SearchDesk({ project }: SearchDeskProps) {
   const [expandRelations, setExpandRelations] = useState(false);
   const [hits, setHits] = useState<RetrievalHit[]>([]);
   const [selectedCitation, setSelectedCitation] = useState<Citation>();
+  const [evidenceDetail, setEvidenceDetail] = useState<EvidenceDetail>();
   const [loading, setLoading] = useState(false);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [notice, setNotice] = useState<string>();
   const graph = useMemo(() => buildGraph(hits), [hits]);
 
@@ -91,17 +79,28 @@ export function SearchDesk({ project }: SearchDeskProps) {
     setLoading(true);
     setNotice(undefined);
     try {
-      const result = await api.searchRetrieval({
-        projectId: project.projectId,
-        query: query.trim(),
-        expandRelations,
-      });
+      const result = await api.searchRetrieval({ projectId: project.projectId, query: query.trim(), expandRelations });
       setHits(result.hits);
       setSelectedCitation(undefined);
+      setEvidenceDetail(undefined);
     } catch (error: unknown) {
       setNotice(errorMessage(error));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function selectCitation(citation: Citation) {
+    setSelectedCitation(citation);
+    setEvidenceDetail(undefined);
+    setEvidenceLoading(true);
+    try {
+      if (!project.projectId) return;
+      setEvidenceDetail(await api.getEvidence(citation.citation_id, project.projectId));
+    } catch (error: unknown) {
+      setNotice(`Evidence 详情读取失败：${errorMessage(error)}`);
+    } finally {
+      setEvidenceLoading(false);
     }
   }
 
@@ -134,20 +133,30 @@ export function SearchDesk({ project }: SearchDeskProps) {
                 <div className="hit-card-meta"><span>0{index + 1}</span><Tag color="green">score {hit.score.toFixed(3)}</Tag><Text type="secondary">{hit.subject_title}</Text></div>
                 <p className="hit-statement">{hit.statement}</p>
                 <div className="citation-list">
-                  {hit.evidence.length ? hit.evidence.map((citation) => <button type="button" className={`citation-chip ${selectedCitation?.citation_id === citation.citation_id ? "is-active" : ""}`} key={citation.citation_id} onClick={() => setSelectedCitation(citation)}><strong>Citation</strong><span>{citation.source_title}</span><small>{locatorLabel(citation.locator)}</small></button>) : <Alert type="warning" message="该命中没有返回 Citation" showIcon />}
+                  {hit.evidence.length ? hit.evidence.map((citation) => <button type="button" className={`citation-chip ${selectedCitation?.citation_id === citation.citation_id ? "is-active" : ""}`} key={citation.citation_id} onClick={() => void selectCitation(citation)}><strong>Citation</strong><span>{citation.source_title}</span><small>{locatorLabel(citation.locator)}</small></button>) : <Alert type="warning" message="该命中没有返回 Citation" showIcon />}
                 </div>
-                {hit.relations.length ? <div className="relation-strip"><Text type="secondary">关系路径</Text>{hit.relations.map((relation) => <Tag key={relation.relation_id}>{relation.source_title} — {relation.relation_type} → {relation.target_title}</Tag>)}</div> : null}
+                {hit.relations.length ? <div className="relation-strip"><Text type="secondary">关系路径</Text>{hit.relations.map((relation) => <Tag key={relation.relation_id}>{relation.source_title} · {relation.relation_type} → {relation.target_title}</Tag>)}</div> : null}
               </article>)}
             </div>
           </div>
           <aside className="search-inspector">
             <div className="column-label">02 / TRACE BACK</div>
-            {selectedCitation ? <div className="citation-inspector"><Tag color="gold">{selectedCitation.source_title}</Tag><Title level={3}>引用定位</Title><blockquote>{selectedCitation.quote}</blockquote><div className="locator-card"><Text type="secondary">稳定定位信息</Text><strong>{locatorLabel(selectedCitation.locator)}</strong><small>source_version_id · {selectedCitation.source_version_id}</small></div><Alert type="info" message="原文预览接口待接入" description="当前已保留来源、版本和 locator；待后端提供文件流/消息读取接口后，可在此精确打开原文。" showIcon /></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点击任意 Citation 查看回溯信息" />}
+            {selectedCitation ? <div className="citation-inspector">
+              <Tag color="gold">{selectedCitation.source_title}</Tag>
+              <Title level={3}>Evidence 详情</Title>
+              {evidenceLoading ? <Spin size="small" tip="正在读取来源正文…" /> : null}
+              <blockquote>{evidenceDetail?.quote ?? selectedCitation.quote}</blockquote>
+              <div className="locator-card"><Text type="secondary">稳定定位信息</Text><strong>{locatorLabel(evidenceDetail?.locator ?? selectedCitation.locator)}</strong><small>source_version_id · {selectedCitation.source_version_id}</small></div>
+              {evidenceDetail ? <>
+                <div className="source-preview"><Text type="secondary">来源正文 · block {evidenceDetail.content_block.ordinal + 1}</Text><p>{evidenceDetail.content_block.content}</p></div>
+                {evidenceDetail.source_version.content_available && project.projectId ? <Button type="link" href={api.sourceVersionContentUrl(evidenceDetail.source_version.id, project.projectId)} target="_blank" rel="noreferrer">打开 PDF 原文 ↗</Button> : null}
+              </> : null}
+            </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点击任意 Citation 查看来源正文与定位信息" />}
           </aside>
         </div>
       ) : query ? <Empty className="search-empty" description="没有命中可展示的知识或证据" /> : <Empty className="search-empty" description="输入问题，开始查看带证据的知识命中" />}
 
-      {hits.length && graph.edges.length ? <section className="graph-panel" aria-labelledby="graph-title"><div className="graph-panel-heading"><div><Text className="section-kicker">TOPOLOGY / LOCAL VIEW</Text><Title id="graph-title" level={3}>当前结果关系图</Title></div><Text type="secondary">仅展示本次检索返回的关系</Text></div><div className="graph-canvas"><ReactFlow nodes={graph.nodes} edges={graph.edges} fitView minZoom={0.45} maxZoom={1.4} nodesDraggable={false}><Background color="#d9d0bd" gap={24} /><Controls /></ReactFlow></div></section> : null}
+      {hits.length && graph.edges.length ? <section className="graph-panel" aria-labelledby="graph-title"><div className="graph-panel-heading"><div><Text className="section-kicker">TOPOLOGY / LOCAL VIEW</Text><Title id="graph-title" level={3}>当前结果关系图</Title></div><Text type="secondary">仅显示本次检索返回的关系</Text></div><div className="graph-canvas"><ReactFlow nodes={graph.nodes} edges={graph.edges} fitView minZoom={0.45} maxZoom={1.4} nodesDraggable={false}><Background color="#d9d0bd" gap={24} /><Controls /></ReactFlow></div></section> : null}
     </section>
   );
 }

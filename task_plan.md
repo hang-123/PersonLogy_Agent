@@ -25,13 +25,15 @@
 - 暂无。
 
 ## Status
-**FE-00/FE-01/FE-02/FE-03/FE-04/FE-05 completed** - API client、项目上下文、导入中心、任务进度、ReviewTask 审核、检索、Citation 展示和局部关系图已接入。FE-03 的原文 Evidence 预览仍等待来源详情接口，FE-06 等待问答接口。
+**Latest implementation:** source version正文、Evidence详情和带来源问答 endpoint 已完成并接入前端；FE-06 已完成，进入 FE-07 最终验收。
+**FE-00/FE-01/FE-02/FE-03/FE-04/FE-05/FE-06 completed** - API client、项目上下文、导入中心、任务进度、ReviewTask 审核、检索、Citation 展示、来源正文/Evidence 详情、局部关系图和带来源问答已接入。
 
 ## Progress
 - [x] FE-00: API 契约、DTO、项目上下文持久化
 - [x] FE-01: PDF / 对话导入中心与结果反馈
 - [x] FE-02: Job 列表、详情、进度轮询与失败展示
-- [x] FE-03: ReviewTask 详情与审核动作重接（已支持版本校验；原文 Evidence 预览待来源接口）
+- [x] FE-03: ReviewTask 详情与审核动作重接（已支持版本校验；Evidence 详情与来源正文已接入）
 - [x] FE-04: 检索与 Citation 回溯（已完成基础真实链路）
 - [x] FE-05: 关系图（已完成查询结果局部图）
-- [ ] FE-06: 带来源问答
+- [x] FE-06: 带来源问答（retrieval-grounded endpoint、Citation/Evidence 正文回溯已接入）
+- [x] FE-07: 整体验收（测试、类型、构建、双服务 HTTP smoke 已通过；浏览器 Playwright 待补）

@@ -6,6 +6,8 @@ from personlogy.ports.retrieval import RetrievalHit
 from app.modules.retrieval.schemas import (
     EvidenceResponse,
     RelationPathResponse,
+    RetrievalAnswerRequest,
+    RetrievalAnswerResponse,
     RetrievalHitResponse,
     RetrievalIndexResponse,
     RetrievalSearchResponse,
@@ -49,6 +51,49 @@ def _to_response(hit: RetrievalHit) -> RetrievalHitResponse:
     )
 
 
+def _unique_evidence(hits: tuple[RetrievalHit, ...]) -> list[EvidenceResponse]:
+    seen: set[UUID] = set()
+    evidence: list[EvidenceResponse] = []
+    for hit in hits:
+        for item in hit.evidence:
+            if item.citation_id in seen:
+                continue
+            seen.add(item.citation_id)
+            evidence.append(
+                EvidenceResponse(
+                    citation_id=item.citation_id,
+                    quote=item.quote,
+                    source_id=item.source_id,
+                    source_title=item.source_title,
+                    source_version_id=item.source_version_id,
+                    locator=item.locator,
+                )
+            )
+    return evidence
+
+
+def _unique_relations(hits: tuple[RetrievalHit, ...]) -> list[RelationPathResponse]:
+    seen: set[UUID] = set()
+    relations: list[RelationPathResponse] = []
+    for hit in hits:
+        for item in hit.relations:
+            if item.relation_id in seen:
+                continue
+            seen.add(item.relation_id)
+            relations.append(
+                RelationPathResponse(
+                    relation_id=item.relation_id,
+                    relation_type=item.relation_type,
+                    direction=item.direction,
+                    source_id=item.source_id,
+                    source_title=item.source_title,
+                    target_id=item.target_id,
+                    target_title=item.target_title,
+                )
+            )
+    return relations
+
+
 @router.get("/search", response_model=RetrievalSearchResponse)
 async def search(
     project_id: UUID,
@@ -66,6 +111,28 @@ async def search(
         project_id=project_id,
         query=q,
         hits=[_to_response(hit) for hit in hits],
+    )
+
+
+@router.post("/answer", response_model=RetrievalAnswerResponse)
+async def answer(request: RetrievalAnswerRequest) -> RetrievalAnswerResponse:
+    result = await retrieval_service.answer(
+        project_id=request.project_id,
+        question=request.question,
+        limit=request.limit,
+        expand_relations=request.expand_relations,
+    )
+    hits = [_to_response(hit) for hit in result.hits]
+    return RetrievalAnswerResponse(
+        project_id=result.project_id,
+        question=result.question,
+        answer=result.answer,
+        mode="retrieval-grounded",
+        hit_count=len(result.hits),
+        hits=hits,
+        citations=_unique_evidence(result.hits),
+        relations=_unique_relations(result.hits),
+        uncertainty=list(result.uncertainty),
     )
 
 

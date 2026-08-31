@@ -1,5 +1,5 @@
 """Hybrid retrieval and evidence assembly workflows."""
 
-from personlogy.application.retrieval.service import RetrievalService
+from personlogy.application.retrieval.service import RetrievalAnswer, RetrievalService
 
-__all__ = ["RetrievalService"]
+__all__ = ["RetrievalAnswer", "RetrievalService"]

@@ -26,6 +26,7 @@ from personlogy.application.orchestration import JobService, StageRunner
 from personlogy.application.replay import ReplayService
 from personlogy.application.retrieval import RetrievalService
 from personlogy.application.schema_management import SchemaChangeService
+from personlogy.application.source_read import SourceReadService
 from personlogy.ports.audit import AuditSink
 from personlogy.ports.lineage import LineageStore
 from personlogy.ports.queue import JobQueue
@@ -90,6 +91,10 @@ pdf_import_service = PdfImportService(
     PdfPlumberParser(),
     max_size_bytes=settings.pdf_max_size_bytes,
     lineage_store=lineage_store,
+)
+source_read_service = SourceReadService(
+    uow_factory,
+    LocalFileStorage(settings.pdf_storage_root),
 )
 compilation_service = CompilationService(
     uow_factory,

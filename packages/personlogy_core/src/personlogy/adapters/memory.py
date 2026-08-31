@@ -193,6 +193,9 @@ class InMemorySourceRepository:
             raise DomainValidationError("content block source version does not exist")
         self._store.blocks[block.id] = block
 
+    async def get_block(self, block_id: UUID) -> ContentBlock | None:
+        return self._store.blocks.get(block_id)
+
     async def list_blocks(self, source_version_id: UUID) -> list[ContentBlock]:
         return sorted(
             (
@@ -225,6 +228,9 @@ class InMemoryKnowledgeRepository:
         if citation.content_block_id not in self._store.blocks:
             raise DomainValidationError("citation content block does not exist")
         self._store.citations[citation.id] = citation
+
+    async def get_citation(self, citation_id: UUID) -> Citation | None:
+        return self._store.citations.get(citation_id)
 
     async def add_claim(self, claim: Claim) -> None:
         if (

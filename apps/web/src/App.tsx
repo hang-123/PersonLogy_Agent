@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Tag, Typography } from "antd";
 
 import { api } from "./api";
+import { AnswerDesk } from "./components/AnswerDesk";
 import { ImportDesk } from "./components/ImportDesk";
 import { JobDesk } from "./components/JobDesk";
 import { ProjectContextBar } from "./components/ProjectContextBar";
@@ -11,7 +12,7 @@ import { readProjectContext, writeProjectContext } from "./projectContext";
 import type { ApiState, ProjectContext } from "./types";
 
 const { Paragraph, Text, Title } = Typography;
-type WorkspaceView = "import" | "jobs" | "review" | "search";
+type WorkspaceView = "import" | "jobs" | "review" | "search" | "answer";
 
 export function App() {
   const [view, setView] = useState<WorkspaceView>("import");
@@ -98,6 +99,15 @@ export function App() {
             知识检索
             <em>beta</em>
           </button>
+          <button
+            type="button"
+            className={view === "answer" ? "is-active" : ""}
+            onClick={() => setView("answer")}
+          >
+            <span>05</span>
+            带来源问答
+            <em>beta</em>
+          </button>
         </nav>
 
         <div className="chain-map" aria-label="当前知识链路">
@@ -153,6 +163,8 @@ export function App() {
           />
         ) : view === "search" ? (
           <SearchDesk project={project} />
+        ) : view === "answer" ? (
+          <AnswerDesk project={project} />
         ) : view === "review" ? (
           <ReviewDesk refreshToken={refreshToken} />
         ) : (

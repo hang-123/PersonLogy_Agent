@@ -1264,6 +1264,85 @@ a:focus-visible {
   border: 1px solid var(--rule);
 }
 
+.answer-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 14px;
+  background: rgba(247, 243, 233, 0.82);
+  border: 1px solid var(--rule);
+}
+
+.answer-bar .ant-input-search {
+  flex: 1;
+}
+
+.answer-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  min-height: 530px;
+  background: var(--paper);
+  border: 1px solid rgba(63, 57, 47, 0.2);
+  box-shadow: 0 22px 60px rgba(69, 58, 39, 0.1);
+}
+
+.answer-main,
+.answer-inspector {
+  min-width: 0;
+  padding: 24px;
+}
+
+.answer-main {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  border-right: 1px solid var(--rule);
+}
+
+.answer-inspector {
+  background: #fbf8ef;
+}
+
+.answer-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.answer-card {
+  padding: 20px;
+  background: #fffdf7;
+  border-left: 3px solid var(--forest-soft);
+}
+
+.answer-card p {
+  margin: 12px 0 0;
+  white-space: pre-line;
+  color: var(--ink);
+  font-family: "Noto Serif SC", "Songti SC", Georgia, serif;
+  line-height: 1.85;
+}
+
+.answer-section {
+  padding-top: 4px;
+}
+
+.source-preview {
+  max-height: 320px;
+  overflow: auto;
+  padding: 14px;
+  background: #fffdf7;
+  border: 1px solid var(--rule);
+}
+
+.source-preview p {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
 @media (max-width: 1280px) {
   .review-grid {
     grid-template-columns: 220px minmax(300px, 1fr);
@@ -1460,7 +1539,9 @@ a:focus-visible {
   }
 
   .search-bar,
-  .search-workspace {
+  .search-workspace,
+  .answer-bar,
+  .answer-workspace {
     display: block;
   }
 
@@ -1472,6 +1553,16 @@ a:focus-visible {
   .search-results {
     border-right: 0;
     border-bottom: 1px solid var(--rule);
+  }
+
+  .answer-main {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .answer-bar .ant-btn {
+    width: 100%;
+    margin-top: 10px;
   }
 
   .graph-canvas {
