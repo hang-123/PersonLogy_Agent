@@ -12,5 +12,12 @@ dependencies = [
   "gel>=3.0,<4",
 ]
 
+[project.optional-dependencies]
+observability = [
+  "opentelemetry-api>=1.27,<2",
+  "opentelemetry-sdk>=1.27,<2",
+  "prometheus-client>=0.20,<1",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]

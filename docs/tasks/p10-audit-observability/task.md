@@ -60,6 +60,14 @@ metadata
 - 保留原结果，支持 Schema、规则、模型和索引版本对比。
 - 退出标准：可以安全重跑并解释差异来源，不覆盖历史事实。
 
+### P10-F：外部后端与运维工具（代码交付完成，Gel 在线迁移待目标环境执行）
+
+- [x] Gel 审计持久化适配器与 schema migration；
+- [x] OpenTelemetry Trace bridge；
+- [x] Prometheus / OTel Metrics bridge；
+- [x] 审计导出、gzip 归档与离线链校验；
+- [x] 备份恢复后的审计、血缘一致性报告与指纹比较。
+
 ## 第一版范围
 
 1. SQLite `RecordStore`、幂等追加、哈希链和校验器；

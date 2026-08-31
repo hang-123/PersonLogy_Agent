@@ -2,6 +2,7 @@ from collections.abc import Awaitable, Callable
 from typing import cast
 from uuid import UUID
 
+from personlogy.adapters.gel_audit import GelAuditStore
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.memory import InMemoryJobQueue, InMemoryStore, InMemoryUnitOfWorkFactory
 from personlogy.adapters.pdf import PdfPlumberParser
@@ -76,6 +77,8 @@ lineage_store: LineageStore | None = None
 if isinstance(store, SQLiteStore):
     audit_sink = SQLiteRecordStore(store.path)
     lineage_store = SQLiteLineageStore(store.path)
+elif gel_store is not None:
+    audit_sink = GelAuditStore(gel_store)
 
 job_service = JobService(uow_factory, queue, audit_sink=audit_sink)
 stage_runner = StageRunner(audit_sink)

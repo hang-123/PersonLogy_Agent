@@ -360,6 +360,8 @@ event_hash
 
 ### P10-F：外部后端适配
 
+状态：代码交付完成；Gel migration 需在目标环境执行并进行在线集成验收。
+
 - Gel 审计持久化适配器；
 - OpenTelemetry Trace exporter；
 - Prometheus/OTel Metrics exporter；

@@ -49,3 +49,21 @@ def test_gel_schema_declares_governance_and_compilation_contract() -> None:
         "scalar type VerificationStatus extending enum<candidate, machine_checked, "
         "pending_review, needs_revision, human_verified, ready_for_writeback, rejected>"
     ) in schema
+
+
+def test_gel_schema_declares_p10f_audit_chain() -> None:
+    schema = _schema()
+
+    assert "type AuditEvent extending Timestamped" in schema
+    assert "required sequence: int64" in schema
+    assert "required event_hash: str" in schema
+    assert "type AuditChainHead" in schema
+    migration = (
+        Path(__file__).parents[3]
+        / "GEL"
+        / "dbschema"
+        / "migrations"
+        / "00003-p10f-audit.edgeql"
+    ).read_text(encoding="utf-8")
+    assert "CREATE TYPE default::AuditEvent" in migration
+    assert "CREATE TYPE default::AuditChainHead" in migration

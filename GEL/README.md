@@ -63,13 +63,16 @@ docker cp my-gel:/tmp/gel-project/dbschema/migrations\. GEL\dbschema\migrations\
 - `dbschema/migrations/00002-m15svfs.edgeql`：TP-05/TP-06 治理与编译（GovernanceRun、
   GovernanceIssue、DuplicateGroup、ConflictRecord、ReviewTask；Citation/Claim/Relation 增加
   `metadata`/`status`；VerificationStatus 扩展为 7 值）。
-- 均已应用到本地 `personlogy` 库。
+- `dbschema/migrations/00003-p10f-audit.edgeql`：P10-F 审计事件与全局 hash head；需在目标库执行
+  `gel migrate` 后才可使用 Gel 审计适配器（本地未连接数据库时不自动宣称已应用）。
+- 前两项迁移已应用到本地 `personlogy` 库。
 
 ## 运行时接入
 
 - API/Worker 通过 `PKS_GEL_DSN` 连接，`PKS_STORAGE_BACKEND=gel`、`PKS_QUEUE_BACKEND=gel`
   启用 Gel 后端（见 `docs/engineering/gel-adapter.md` 与 `.env.example`）。
-- 适配器实现位于 `packages/personlogy_core/src/personlogy/adapters/gel.py`。
+- 业务适配器实现位于 `packages/personlogy_core/src/personlogy/adapters/gel.py`，P10 审计适配器位于
+  `packages/personlogy_core/src/personlogy/adapters/gel_audit.py`；应用新迁移后才可启用 Gel 审计。
 
 ## 查看数据 / 打开 Gel UI
 

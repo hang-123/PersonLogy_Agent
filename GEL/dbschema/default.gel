@@ -162,4 +162,33 @@ module default {
     started_at: datetime;
     finished_at: datetime;
   };
+
+  # P10-F immutable audit stream. ``id`` is the event_id used by the domain.
+  type AuditEvent extending Timestamped {
+    required event_type: str;
+    required schema_version: str;
+    required trace_id: str;
+    span_id: str;
+    parent_span_id: str;
+    request_id: str;
+    required actor_type: str;
+    actor_id: str;
+    required entity_type: str;
+    entity_id: str;
+    required status: str;
+    reason_code: str;
+    before_digest: str;
+    after_digest: str;
+    project_id: uuid;
+    required metadata: json { default := <json>{}; };
+    required sequence: int64 { constraint exclusive; };
+    prev_hash: str;
+    required event_hash: str { constraint exclusive; };
+  };
+
+  type AuditChainHead {
+    required key: str { constraint exclusive; };
+    required sequence: int64 { default := 0; };
+    event_hash: str;
+  };
 }

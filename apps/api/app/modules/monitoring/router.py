@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import PlainTextResponse
+from personlogy.adapters.telemetry import PrometheusMetricsExporter
 from personlogy.application.monitoring import MetricsView, MonitoringHealth, MonitoringService
 
 from app.modules.monitoring.schemas import (
@@ -69,6 +71,15 @@ async def get_metrics(
 ) -> MetricsResponse:
     view = await _require_service().metrics(metric_name=metric_name, limit=limit)
     return _metrics_response(view)
+
+
+@router.get("/metrics/prometheus", response_class=PlainTextResponse)
+async def get_metrics_prometheus(
+    metric_name: str | None = None,
+    limit: int = Query(default=5000, ge=1, le=5000),
+) -> PlainTextResponse:
+    view = await _require_service().metrics(metric_name=metric_name, limit=limit)
+    return PlainTextResponse(PrometheusMetricsExporter().render(view.snapshots))
 
 
 __all__ = ["health_response", "router"]

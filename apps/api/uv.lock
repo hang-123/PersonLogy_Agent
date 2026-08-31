@@ -439,8 +439,12 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "gel", specifier = ">=3.0,<4" },
+    { name = "opentelemetry-api", marker = "extra == 'observability'", specifier = ">=1.27,<2" },
+    { name = "opentelemetry-sdk", marker = "extra == 'observability'", specifier = ">=1.27,<2" },
     { name = "pdfplumber", specifier = ">=0.11,<1" },
+    { name = "prometheus-client", marker = "extra == 'observability'", specifier = ">=0.20,<1" },
 ]
+provides-extras = ["observability"]
 
 [[package]]
 name = "pillow"
