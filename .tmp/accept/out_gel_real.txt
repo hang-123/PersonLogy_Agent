@@ -1,0 +1,4 @@
+......                                                                   [100%]
+F:\300_studyspace\300_学习空间\PersonLogy_Agent\.venv\Lib\site-packages\_pytest\pathlib.py:103: PytestWarning: (rm_rf) unknown function <built-in function scandir> when removing \\?\F:\300_studyspace\300_学习空间\PersonLogy_Agent\.tmp\accept\temproot\pytest-of-Zayn\garbage-2787bffd-83a3-4bef-aebf-4b2b27b32ea9\test_writeback_publishes_idemp0:
+<class 'PermissionError'>: [WinError 5] 拒绝访问。: '\\\\?\\F:\\300_studyspace\\300_学习空间\\PersonLogy_Agent\\.tmp\\accept\\temproot\\pytest-of-Zayn\\garbage-2787bffd-83a3-4bef-aebf-4b2b27b32ea9\\test_writeback_publishes_idemp0'
+  warnings.warn(

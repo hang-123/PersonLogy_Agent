@@ -54,3 +54,20 @@
 - 接入受控授权端口（local/test 允许，production fail-closed）、审计事件和血缘边；对象存储失败会把回写记录置为 `retryable_failed`，支持作业重试。
 - 验证结果：P7 测试与核心测试 12 passed；全量 API 测试 65 passed、6 skipped；ruff/mypy 全部通过。
 - Gel CLI/Docker 当前不可用，未伪造迁移文件；`GEL/dbschema/default.gel` 已更新，正式 migration 需在具备 Gel CLI 与数据库的环境中生成/执行。
+
+### 2026-08-31（补充：Gel 迁移落地与后端补齐）
+
+- 发现本机真实 Gel 实例（`localhost:5656`，容器 my-gel，密码见 `F:\middleware\docker-compose.yml`，DSN `gel://edgedb:123456@localhost:5656/personlogy?tls_security=insecure`）；使用系统 Gel CLI（`C:\Users\Zayn\AppData\Roaming\edgedb\bin\gel.exe`，7.10.2）。
+- 数据库此前只应用了 00001/00002；手写迁移 `00003-p10f-audit.edgeql` 的迁移名 `p10f_audit` 无法被 Gel CLI 解析（真实缺陷）。用 CLI 从基线重新生成：
+  - `00003-m1idqkc.edgeql`：P10-F 审计（AuditEvent + AuditChainHead）——取代手写文件（内容一致、命名合规）；
+  - `00004-m1srqqu.edgeql`：Writeback（WritebackStatus/Record/Item）+ Conversation/ConversationMessage（`default.gel` 补类型，`allow_user_specified_id` 已开启、RelationType seed 完整）。
+- 两步迁移均 `gel migrate` 应用到真实实例（现共 4 个迁移、23 个 default 类型）。
+- 真实实例验证：`test_gel_adapter.py` 8 passed（新增 conversation、writeback 两个用例）；`test_gel_schema_contract.py` 4 passed（新增 writeback+conversation 契约断言）；全量 pytest 71 passed。
+- 端到端 smoke：对话导入（创建/幂等/父消息链）与受控回写（record/item 提交、按 id/key 读回）在真实 Gel 后端通过。
+- 遗留：Writeback 全链路（effects/OKF/索引）在 Gel 后端的端到端用例待补；core 包 ruff 17 项为既有问题。
+
+### 2026-08-31（补充：遗留问题清理）
+
+- **core 包 ruff 17 项清零**：10 个 I001 导入排序 + 1 个 RUF100 自动修复；6 个 TRY004 改为 `TypeError`（存储数据非预期类型场景）；1 个 BLE001 加 `noqa`（MetricsProjector 有意捕获所有事件级异常以记录失败并停止该批）。core `ruff check src` 全绿、mypy 85 files 通过。
+- **Gel Writeback 全链路端到端用例**：新增 `test_writeback_full_pipeline_on_gel`（真实 Gel 实例：submit → effects → OKF 产物落盘 + provenance 校验 → `retrieval.index` Job 触发 → 候选状态推进 `ready_for_writeback`；含幂等重提）。Gel 测试组 13 passed（9 adapter + 4 contract），全量 pytest 72 passed。
+- **Gel 迁移流程固化**：新增 `GEL/scripts/gel-migrate.ps1`（应用现有迁移 / `-Create` 基于 dbschema 差异生成新迁移 / `-Seed`；处理 CLI 无差异 exit 4；校验 allow_user_specified_id）；`GEL/README.md` 增补一键执行说明与本机 my-gel DSN。

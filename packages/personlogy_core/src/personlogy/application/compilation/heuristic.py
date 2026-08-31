@@ -66,7 +66,7 @@ class DocumentHeuristicCompiler:
                 RelationType(
                     key="related_to",
                     label="相关",
-                    description="相邻文档片段之间的弱关联候选，需人工复核。",  # noqa: RUF001
+                    description="相邻文档片段之间的弱关联候选，需人工复核。",
                 )
             )
             for previous, current, citation in zip(

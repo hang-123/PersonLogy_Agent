@@ -34,6 +34,22 @@ gel query "configure current database set allow_user_specified_id := true" --dsn
 执行顺序：先建库（`gel database create personlogy` 或 `gel branch create`），再生成/应用迁移，
 再 seed，最后配置 `allow_user_specified_id`。
 
+### 推荐：用 `scripts/gel-migrate.ps1` 一键执行（Windows）
+
+在仓库根目录运行（自动应用现有迁移、可选生成新迁移与 seed、校验配置）：
+
+```powershell
+$env:GEL_PASSWORD = "<实例密码>"            # 或 -Password 参数
+.\GEL\scripts\gel-migrate.ps1                # 仅应用现有迁移
+.\GEL\scripts\gel-migrate.ps1 -Create        # 应用 + 基于 dbschema 差异生成新迁移
+.\GEL\scripts\gel-migrate.ps1 -Create -Seed  # 应用 + 生成 + 执行 seed
+```
+
+- 迁移文件**必须由 CLI 生成**；手写迁移名无法被 CLI 解析（见"已知坑"）。
+- `-Create` 在无 schema 差异时输出 "no schema changes" 并正常退出（CLI exit 4 已处理）。
+- 本机开发实例：容器 my-gel（`F:\middleware\docker-compose.yml`），DSN
+  `gel://edgedb:<密码>@localhost:5656/personlogy?tls_security=insecure`。
+
 ### 本机 Docker 实例（my-gel）说明
 
 开发机没有独立安装 Gel CLI 时，可直接使用容器内自带 CLI（需先把 `GEL/` 拷入容器，
@@ -52,8 +68,9 @@ docker cp my-gel:/tmp/gel-project/dbschema/migrations\. GEL\dbschema\migrations\
 - `gel migration create` 默认**交互式**提问；自动化必须加 `--non-interactive`（或 `--expert`）。
 - 给**已有数据**的类型增加 `required` 字段（如 00002 给 Citation/Claim 加 `metadata`）会报
   `MissingRequiredError`。开发库可先清数据再迁移；有数据的库需先兜底默认值或分步迁移。
-- Gel schema 目前**没有 Conversation/ConversationMessage 类型**（对话导入暂以 SQLite 承载），
-  如需 Gel 承载对话，需先在 `dbschema/default.gel` 补充类型并生成新迁移。
+- 手写迁移文件的迁移名必须是 Gel CLI 可解析的格式（`m` + base32，与 `00001`/`00002` 一致）；
+  早前手写的 `00003-p10f-audit.edgeql`（迁移名 `p10f_audit`）CLI 无法解析，已由 CLI 生成的
+  `00003-m1idqkc.edgeql` 取代。
 
 ## 迁移状态
 
@@ -63,9 +80,10 @@ docker cp my-gel:/tmp/gel-project/dbschema/migrations\. GEL\dbschema\migrations\
 - `dbschema/migrations/00002-m15svfs.edgeql`：TP-05/TP-06 治理与编译（GovernanceRun、
   GovernanceIssue、DuplicateGroup、ConflictRecord、ReviewTask；Citation/Claim/Relation 增加
   `metadata`/`status`；VerificationStatus 扩展为 7 值）。
-- `dbschema/migrations/00003-p10f-audit.edgeql`：P10-F 审计事件与全局 hash head；需在目标库执行
-  `gel migrate` 后才可使用 Gel 审计适配器（本地未连接数据库时不自动宣称已应用）。
-- 前两项迁移已应用到本地 `personlogy` 库。
+- `dbschema/migrations/00003-m1idqkc.edgeql`：P10-F 审计（AuditEvent + AuditChainHead 哈希链）。
+- `dbschema/migrations/00004-m1srqqu.edgeql`：P7 受控回写 + P4 对话导入（WritebackStatus 枚举、
+  WritebackRecord、WritebackItem、Conversation、ConversationMessage）。
+- 全部迁移（00001–00004）已应用到本地 `personlogy` 库（2026-08-31 真实实例验证）。
 
 ## 运行时接入
 

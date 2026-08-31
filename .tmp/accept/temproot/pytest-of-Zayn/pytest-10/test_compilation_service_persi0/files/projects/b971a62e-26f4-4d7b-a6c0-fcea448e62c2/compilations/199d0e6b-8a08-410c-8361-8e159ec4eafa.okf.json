@@ -1,0 +1,54 @@
+{
+  "okf_version": "0.2",
+  "bundle_type": "knowledge_candidates",
+  "project_id": "b971a62e-26f4-4d7b-a6c0-fcea448e62c2",
+  "source_version_id": "c9841b7d-152a-4889-a076-e8818a2f5df9",
+  "generated_at": "2026-08-31T13:16:39.201947+00:00",
+  "provenance": {
+    "model_name": "local-heuristic",
+    "prompt_version": "p5-heuristic-v1",
+    "mode": "heuristic",
+    "task_id": "199d0e6b-8a08-410c-8361-8e159ec4eafa",
+    "generated_at": "2026-08-31T13:16:39.201947+00:00"
+  },
+  "concepts": [
+    {
+      "id": "ea90c02f-1ac2-4e56-b82e-afe884ad9bbe",
+      "type": "concept",
+      "title": "知识编译应保留来源。",
+      "properties": {
+        "extraction": "heuristic",
+        "source_block_id": "a03ec2fb-8b16-4ad3-86d8-0cc6e322f852"
+      },
+      "status": "candidate"
+    }
+  ],
+  "citations": [
+    {
+      "id": "a6d03708-006c-4e3f-af5f-324b1e0e72ab",
+      "content_block_id": "a03ec2fb-8b16-4ad3-86d8-0cc6e322f852",
+      "quote": "知识编译应保留来源。",
+      "locator": {
+        "page": 1
+      }
+    }
+  ],
+  "claims": [
+    {
+      "id": "552033dd-53b3-47ce-a025-2f4af4fbc5d8",
+      "subject_id": "ea90c02f-1ac2-4e56-b82e-afe884ad9bbe",
+      "statement": "知识编译应保留来源。",
+      "confidence": 0.35,
+      "status": "candidate",
+      "citation_ids": [
+        "a6d03708-006c-4e3f-af5f-324b1e0e72ab"
+      ]
+    }
+  ],
+  "relations": [],
+  "governance": {
+    "status": "needs_review",
+    "rule_version": "p6-rules-v1",
+    "review_required": true
+  }
+}

@@ -13,7 +13,11 @@ from personlogy.application.backup_consistency import (
     SQLiteConsistencyReport,
     compare_sqlite_backups,
 )
-from personlogy.application.lineage import LineageService, LineageTrace, add_lineage_link
+from personlogy.application.lineage import (
+    LineageService,
+    LineageTrace,
+    add_lineage_link,
+)
 from personlogy.application.monitoring import (
     MetricsProjector,
     MetricsView,

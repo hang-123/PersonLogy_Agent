@@ -42,6 +42,27 @@ module default {
     constraint exclusive on ((.source_version, .ordinal));
   };
 
+  type Conversation extending Timestamped {
+    required external_id: str;
+    required title: str;
+    required metadata: json { default := <json>{}; };
+    required project: Project;
+    required source: Source;
+    constraint exclusive on ((.project, .external_id));
+  };
+
+  type ConversationMessage extending Timestamped {
+    required external_id: str;
+    required role: str;
+    required content: str;
+    required ordinal: int32 { constraint min_value(0); };
+    required content_hash: str;
+    parent_external_id: str;
+    required attachments: json { default := <json>{}; };
+    required conversation: Conversation;
+    constraint exclusive on ((.conversation, .external_id));
+  };
+
   type KnowledgeNode extending Timestamped {
     required node_type: str;
     required title: str;

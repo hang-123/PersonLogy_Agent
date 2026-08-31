@@ -75,6 +75,21 @@ class SemanticRetriever(Protocol):
     ) -> tuple[SemanticHit, ...]: ...
 
 
+class Reranker(Protocol):
+    """Rerank retrieval hits with a provider model (e.g. cross-encoder / Cohere)."""
+
+    model_name: str
+    model_version: str
+
+    async def rerank(
+        self,
+        *,
+        query: str,
+        hits: Sequence[RetrievalHit],
+        limit: int = 20,
+    ) -> tuple[RetrievalHit, ...]: ...
+
+
 class RetrievalReader(Protocol):
     async def search(
         self,
@@ -95,6 +110,7 @@ __all__ = [
     "EmbeddingVector",
     "Evidence",
     "RelationPath",
+    "Reranker",
     "RetrievalHit",
     "RetrievalIndexer",
     "RetrievalReader",

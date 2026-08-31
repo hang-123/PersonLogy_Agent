@@ -12,7 +12,13 @@ from personlogy.domain.job import Job
 from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode
 from personlogy.domain.relation.models import Relation, RelationType
 from personlogy.domain.source.conversation import Conversation, ConversationMessage
-from personlogy.domain.source.models import ContentBlock, Project, Source, SourceKind, SourceVersion
+from personlogy.domain.source.models import (
+    ContentBlock,
+    Project,
+    Source,
+    SourceKind,
+    SourceVersion,
+)
 
 
 class SourceRepository(Protocol):

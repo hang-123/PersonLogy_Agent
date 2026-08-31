@@ -27,6 +27,7 @@ from uuid import UUID
 
 import gel
 from gel import errors as gel_errors
+
 from personlogy.domain.governance.models import (
     CandidateKind,
     ConflictRecord,

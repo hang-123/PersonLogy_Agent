@@ -86,7 +86,7 @@ class MetricsProjector:
                 if sequence is None or sequence != checkpoint + 1 + index:
                     raise ValueError("audit sequence is not contiguous for metrics projection")
                 self._project_event(state, event)
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001 - any per-event failure must be recorded and stop this batch, never crash the projector
                 failed_sequence = sequence or checkpoint + 1
                 await self._store.record_failure(sequence=failed_sequence, error=str(error))
                 return ProjectionRun(

@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS lineage_link_to_idx
 def _metadata(value: str) -> dict[str, object]:
     parsed = json.loads(value)
     if not isinstance(parsed, dict):
-        raise ValueError("stored lineage metadata is not an object")
+        raise TypeError("stored lineage metadata is not an object")
     return cast(dict[str, object], parsed)
 
 

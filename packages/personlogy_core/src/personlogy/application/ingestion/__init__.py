@@ -1,6 +1,10 @@
 """Source ingestion use cases."""
 
-from personlogy.application.ingestion.pdf import PdfImportResult, PdfImportService, PdfUploadError
+from personlogy.application.ingestion.pdf import (
+    PdfImportResult,
+    PdfImportService,
+    PdfUploadError,
+)
 from personlogy.application.ingestion.service import (
     ConversationImportResult,
     ConversationImportService,

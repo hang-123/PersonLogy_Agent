@@ -24,7 +24,7 @@ def _json(value: dict[str, object]) -> str:
 def _metadata(value: object) -> dict[str, object]:
     parsed = json.loads(value) if isinstance(value, str) else value
     if not isinstance(parsed, dict):
-        raise ValueError("stored audit metadata is not an object")
+        raise TypeError("stored audit metadata is not an object")
     return cast(dict[str, object], parsed)
 
 

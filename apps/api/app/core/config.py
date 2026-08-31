@@ -28,6 +28,38 @@ class Settings(BaseSettings):
         default_factory=lambda: [AnyHttpUrl("http://localhost:5173")]
     )
 
+    # --- LLM / Embedding / Rerank providers (OpenAI-compatible) ---
+    # Set llm_provider to "openai_compatible" (and fill base_url/api_key/model) to
+    # replace the heuristic DocumentHeuristicCompiler with a real LLM compiler.
+    # Leave provider as "none" to keep the current deterministic pipeline.
+    llm_provider: str = "none"
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+    embedding_provider: str = "none"
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_model: str = ""
+    rerank_provider: str = "none"
+    rerank_base_url: str = ""
+    rerank_api_key: str = ""
+    rerank_model: str = ""
+
+    def llm_enabled(self) -> bool:
+        return self.llm_provider == "openai_compatible" and bool(
+            self.llm_base_url and self.llm_model
+        )
+
+    def embedding_enabled(self) -> bool:
+        return self.embedding_provider == "openai_compatible" and bool(
+            self.embedding_base_url and self.embedding_model
+        )
+
+    def rerank_enabled(self) -> bool:
+        return self.rerank_provider == "openai_compatible" and bool(
+            self.rerank_base_url and self.rerank_model
+        )
+
     def dependency_status(self) -> dict[str, str]:
         return {
             "gel": "configured" if self.gel_dsn else "not_configured",

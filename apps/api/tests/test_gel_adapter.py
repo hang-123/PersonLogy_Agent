@@ -12,6 +12,7 @@ Example:
 """
 
 import asyncio
+import json
 import os
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -25,6 +26,7 @@ from personlogy.adapters.pdf import PdfPlumberParser
 from personlogy.application.governance import GovernanceService
 from personlogy.application.ingestion import PdfImportService
 from personlogy.application.orchestration import JobService
+from personlogy.application.writeback import LocalWritebackAuthorizer, WritebackService
 from personlogy.domain.governance.models import (
     CandidateKind,
     ConflictRecord,
@@ -39,8 +41,16 @@ from personlogy.domain.governance.models import (
 from personlogy.domain.job import Job, JobStatus
 from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode, VerificationStatus
 from personlogy.domain.relation.models import Relation
+from personlogy.domain.source.conversation import Conversation, ConversationMessage
 from personlogy.domain.source.models import ContentBlock, Project, Source, SourceKind, SourceVersion
+from personlogy.domain.writeback.models import (
+    CandidateRef,
+    WritebackItem,
+    WritebackRecord,
+    WritebackStatus,
+)
 from personlogy.shared.errors import DomainValidationError
+from personlogy.shared.trace import TraceContext
 
 GEL_DSN = os.getenv("PKS_GEL_TEST_DSN")
 
@@ -476,6 +486,225 @@ async def _test_job_queue_dequeue_retrying_on_gel() -> None:
         assert second.id != first.id
         # the future retry is not eligible yet
         assert await service.start_next(timeout_seconds=0.3) is None
+    finally:
+        await store.aclose()
+
+
+def test_conversation_repository_roundtrip_on_gel() -> None:
+    asyncio.run(_test_conversation_repository_roundtrip_on_gel())
+
+
+async def _test_conversation_repository_roundtrip_on_gel() -> None:
+    store = _store()
+    try:
+        factory = GelUnitOfWorkFactory(store)
+        suffix = uuid4()
+        async with factory() as uow:
+            project = Project(name=f"gel-conv-{suffix}", slug=f"gel-conv-{suffix}")
+            await uow.sources.add_project(project)
+            source = Source(project.id, SourceKind.CONVERSATION, "对话测试")
+            await uow.sources.add_source(source)
+            conversation = Conversation(
+                project_id=project.id,
+                source_id=source.id,
+                external_id=f"ext-{suffix}",
+                title="示例对话",
+                metadata={"origin": "test"},
+            )
+            await uow.sources.add_conversation(conversation)
+            message = ConversationMessage(
+                conversation_id=conversation.id,
+                external_id=f"m1-{suffix}",
+                role="user",
+                content="第一条消息",
+                ordinal=0,
+                content_hash="h1",
+                parent_external_id=None,
+            )
+            await uow.sources.add_message(message)
+            await uow.commit()
+
+        async with factory() as uow:
+            stored = await uow.sources.get_conversation(project.id, f"ext-{suffix}")
+            assert stored is not None
+            assert stored.title == "示例对话"
+            assert stored.metadata == {"origin": "test"}
+            msg = await uow.sources.get_message(conversation.id, f"m1-{suffix}")
+            assert msg is not None
+            assert msg.role == "user"
+            assert msg.content == "第一条消息"
+            assert msg.ordinal == 0
+    finally:
+        await store.aclose()
+
+
+def test_writeback_repository_roundtrip_on_gel() -> None:
+    asyncio.run(_test_writeback_repository_roundtrip_on_gel())
+
+
+async def _test_writeback_repository_roundtrip_on_gel() -> None:
+    store = _store()
+    try:
+        factory = GelUnitOfWorkFactory(store)
+        suffix = uuid4()
+        async with factory() as uow:
+            project = Project(name=f"gel-wb-{suffix}", slug=f"gel-wb-{suffix}")
+            await uow.sources.add_project(project)
+            source = Source(project.id, SourceKind.PDF, "回写测试")
+            await uow.sources.add_source(source)
+            version = SourceVersion(source.id, 1, "wb-h1", "wb-k1")
+            await uow.sources.add_version(version)
+            block = ContentBlock(version.id, 0, "回写引用", "wb-bh1", {"page": 1})
+            await uow.sources.add_block(block)
+            node = KnowledgeNode(project.id, "concept", "回写概念")
+            await uow.knowledge.add_node(node)
+            citation = Citation(block.id, "回写引用", {"page": 1})
+            await uow.knowledge.add_citation(citation)
+            claim = Claim(project.id, node.id, "回写声明", (citation,))
+            await uow.knowledge.add_claim(claim)
+            run = GovernanceRun(
+                project.id, uuid4(), "wb-rules", GovernanceRunStatus.NEEDS_REVIEW, (claim.id,)
+            )
+            await uow.governance.add_run(run)
+            record = WritebackRecord(
+                project_id=project.id,
+                governance_run_id=run.id,
+                schema_namespace="personlogy",
+                schema_version=1,
+                idempotency_key=f"wb-key-{suffix}",
+                request_digest="req-digest",
+                candidate_digest="cand-digest",
+                candidates=(CandidateRef(claim.id, CandidateKind.CLAIM, 1),),
+            )
+            await uow.writebacks.add(record)
+            await uow.writebacks.add_item(
+                WritebackItem(
+                    record_id=record.id,
+                    candidate_id=claim.id,
+                    candidate_kind=CandidateKind.CLAIM,
+                    before_status=claim.status,
+                    after_status=claim.status,
+                    before_digest="b",
+                    after_digest="a",
+                    result="ok",
+                )
+            )
+            await uow.commit()
+
+        async with factory() as uow:
+            stored = await uow.writebacks.get(record.id)
+            assert stored is not None
+            assert stored.status is WritebackStatus.EFFECTS_PENDING
+            assert stored.idempotency_key == f"wb-key-{suffix}"
+            items = await uow.writebacks.list_items(record.id)
+            assert len(items) == 1
+            by_key = await uow.writebacks.get_by_idempotency_key(f"wb-key-{suffix}")
+            assert by_key is not None and by_key.id == record.id
+    finally:
+        await store.aclose()
+
+
+def test_writeback_full_pipeline_on_gel(tmp_path: Path) -> None:
+    """Submit -> effects (OKF artifact + retrieval.index job) on the real Gel backend."""
+    asyncio.run(_test_writeback_full_pipeline_on_gel(tmp_path))
+
+
+async def _test_writeback_full_pipeline_on_gel(tmp_path: Path) -> None:
+    store = _store()
+    try:
+        factory = GelUnitOfWorkFactory(store)
+        suffix = uuid4()
+        async with factory() as uow:
+            project = Project(name=f"gel-wbpipe-{suffix}", slug=f"gel-wbpipe-{suffix}")
+            await uow.sources.add_project(project)
+            source = Source(project.id, SourceKind.PDF, "回写管道测试")
+            await uow.sources.add_source(source)
+            version = SourceVersion(source.id, 1, "pipe-h1", "pipe-k1")
+            await uow.sources.add_version(version)
+            block = ContentBlock(version.id, 0, "管道引用", "pipe-bh1", {"page": 1})
+            await uow.sources.add_block(block)
+            node = KnowledgeNode(
+                project.id,
+                "concept",
+                "管道概念",
+                status=VerificationStatus.HUMAN_VERIFIED,
+            )
+            await uow.knowledge.add_node(node)
+            citation = Citation(block.id, "管道引用", {"page": 1})
+            await uow.knowledge.add_citation(citation)
+            claim = Claim(
+                project.id,
+                node.id,
+                "管道声明",
+                (citation,),
+                status=VerificationStatus.HUMAN_VERIFIED,
+            )
+            await uow.knowledge.add_claim(claim)
+            run = GovernanceRun(
+                project.id, uuid4(), "pipe-rules", GovernanceRunStatus.NEEDS_REVIEW, (claim.id,)
+            )
+            await uow.governance.add_run(run)
+            task = ReviewTask(
+                run.id,
+                claim.id,
+                CandidateKind.CLAIM,
+                status=ReviewTaskStatus.APPROVED,
+                reviewer_id="gel-reviewer",
+                reason="来源明确",
+                before={"status": VerificationStatus.PENDING_REVIEW.value},
+                after={"status": VerificationStatus.HUMAN_VERIFIED.value},
+                version=1,
+            )
+            await uow.governance.add_review_task(task)
+            await uow.commit()
+
+        service = WritebackService(
+            factory,
+            LocalFileStorage(tmp_path / "files"),
+            authorizer=LocalWritebackAuthorizer(environment="test"),
+        )
+        context = TraceContext.root(actor_type="user", actor_id="gel-operator")
+        with context.activate():
+            record, effects_job = await service.submit(
+                project_id=project.id,
+                governance_run_id=run.id,
+                candidates=(CandidateRef(claim.id, CandidateKind.CLAIM, 1),),
+                idempotency_key=f"wb-pipe-{suffix}",
+            )
+            assert record.status is WritebackStatus.EFFECTS_PENDING
+            assert effects_job.kind == "knowledge.writeback.effects"
+
+            # idempotent resubmission returns the same record + job
+            again, again_job = await service.submit(
+                project_id=project.id,
+                governance_run_id=run.id,
+                candidates=(CandidateRef(claim.id, CandidateKind.CLAIM, 1),),
+                idempotency_key=f"wb-pipe-{suffix}",
+            )
+            assert again.id == record.id
+            assert again_job.id == effects_job.id
+
+            completed = await service.process_effects_job(effects_job)
+
+        assert completed.status is WritebackStatus.COMPLETED
+        assert completed.okf_object_key is not None
+        okf = json.loads(
+            (tmp_path / "files" / completed.okf_object_key).read_text(encoding="utf-8")
+        )
+        assert okf["provenance"]["writeback_id"] == str(record.id)
+        assert okf["candidates"][0]["candidate_id"] == str(claim.id)
+
+        # the effects job must have enqueued a retrieval.index job
+        async with factory() as uow:
+            index_job = await uow.jobs.get_by_idempotency_key(
+                f"retrieval-index:{project.id}:writeback:{record.id}"
+            )
+            assert index_job is not None
+            assert index_job.kind == "retrieval.index"
+            assert index_job.payload["project_id"] == str(project.id)
+            stored_claim = await uow.knowledge.get_claim(claim.id)
+            assert stored_claim is not None
+            assert stored_claim.status is VerificationStatus.READY_FOR_WRITEBACK
     finally:
         await store.aclose()
 

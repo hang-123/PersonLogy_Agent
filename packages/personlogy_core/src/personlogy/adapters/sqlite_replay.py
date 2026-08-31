@@ -98,7 +98,7 @@ def _plan_from_row(row: sqlite3.Row) -> ReplayPlan:
 def _comparison_from_row(row: sqlite3.Row) -> ReplayComparison:
     dimensions = json.loads(row["difference_dimensions"])
     if not isinstance(dimensions, list):
-        raise ValueError("stored replay comparison dimensions are not a list")
+        raise TypeError("stored replay comparison dimensions are not a list")
     return ReplayComparison(
         comparison_id=UUID(row["comparison_id"]),
         project_id=UUID(row["project_id"]),

@@ -9,7 +9,13 @@ from uuid import UUID
 from personlogy.application.lineage import add_lineage_link
 from personlogy.application.orchestration import JobService
 from personlogy.domain.job import Job
-from personlogy.domain.source.models import ContentBlock, Project, Source, SourceKind, SourceVersion
+from personlogy.domain.source.models import (
+    ContentBlock,
+    Project,
+    Source,
+    SourceKind,
+    SourceVersion,
+)
 from personlogy.ports.ingestion import ObjectStorage, PdfParser
 from personlogy.ports.lineage import LineageStore
 from personlogy.ports.unit_of_work import UnitOfWorkFactory

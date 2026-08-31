@@ -59,7 +59,7 @@ VALUES (1, 0, NULL);
 def _metadata(value: str) -> dict[str, object]:
     parsed = json.loads(value)
     if not isinstance(parsed, dict):
-        raise ValueError("stored audit metadata is not an object")
+        raise TypeError("stored audit metadata is not an object")
     return cast(dict[str, object], parsed)
 
 

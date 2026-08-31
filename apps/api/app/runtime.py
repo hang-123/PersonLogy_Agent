@@ -3,6 +3,11 @@ from typing import cast
 from uuid import UUID
 
 from personlogy.adapters.gel_audit import GelAuditStore
+from personlogy.adapters.llm_openai import (
+    OpenAICompatCompiler,
+    OpenAICompatEmbeddingProvider,
+    OpenAICompatReranker,
+)
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.memory import InMemoryJobQueue, InMemoryStore, InMemoryUnitOfWorkFactory
 from personlogy.adapters.pdf import PdfPlumberParser
@@ -33,12 +38,20 @@ from personlogy.application.writeback import (
     WritebackService,
 )
 from personlogy.ports.audit import AuditSink
+from personlogy.ports.compilation import KnowledgeCompiler
 from personlogy.ports.lineage import LineageStore
 from personlogy.ports.queue import JobQueue
-from personlogy.ports.retrieval import RetrievalHit, RetrievalReader
+from personlogy.ports.retrieval import (
+    EmbeddingProvider,
+    Reranker,
+    RetrievalHit,
+    RetrievalReader,
+)
 from personlogy.ports.unit_of_work import UnitOfWorkFactory
 
 from app.core.config import get_settings
+
+CompilationServiceCompiler = KnowledgeCompiler
 
 settings = get_settings()
 
@@ -101,10 +114,20 @@ source_read_service = SourceReadService(
     uow_factory,
     LocalFileStorage(settings.pdf_storage_root),
 )
+# LLM compiler: replace the deterministic heuristic with an OpenAI-compatible
+# chat model when PKS_LLM_PROVIDER=openai_compatible and base_url/model are set.
+if settings.llm_enabled():
+    compiler: CompilationServiceCompiler = OpenAICompatCompiler(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key,
+        model=settings.llm_model,
+    )
+else:
+    compiler = DocumentHeuristicCompiler()
 compilation_service = CompilationService(
     uow_factory,
     job_service,
-    DocumentHeuristicCompiler(),
+    compiler,
     LocalFileStorage(settings.pdf_storage_root),
     lineage_store=lineage_store,
 )

@@ -179,7 +179,7 @@ def verify_audit_export(path: str | Path) -> AuditExportVerification:
         try:
             parsed = json.loads(raw_line)
             if not isinstance(parsed, dict):
-                raise ValueError("record is not an object")
+                raise TypeError("record is not an object")
             event = _event_from_record(parsed)
             expected_sequence = checked + 1
             if event.sequence != expected_sequence:

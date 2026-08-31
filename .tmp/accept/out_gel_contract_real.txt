@@ -1,0 +1,15 @@
+..F                                                                      [100%]
+================================== FAILURES ===================================
+__________________ test_gel_schema_declares_p10f_audit_chain __________________
+apps\api\tests\test_gel_schema_contract.py:67: in test_gel_schema_declares_p10f_audit_chain
+    ).read_text(encoding="utf-8")
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Zayn\AppData\Local\Programs\Python\Python312\Lib\pathlib.py:1027: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Zayn\AppData\Local\Programs\Python\Python312\Lib\pathlib.py:1013: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   FileNotFoundError: [Errno 2] No such file or directory: 'F:\\300_studyspace\\300_Ñ§Ï°¿Õ¼ä\\PersonLogy_Agent\\GEL\\dbschema\\migrations\\00003-p10f-audit.edgeql'
+=========================== short test summary info ===========================
+FAILED apps\api\tests\test_gel_schema_contract.py::test_gel_schema_declares_p10f_audit_chain

@@ -11,7 +11,11 @@ from pathlib import Path
 from typing import cast
 
 from personlogy.domain.metrics import MetricSnapshot, ProjectionFailure
-from personlogy.ports.metrics import IndexHealth, MetricsProjectionStore, OperationalProbe
+from personlogy.ports.metrics import (
+    IndexHealth,
+    MetricsProjectionStore,
+    OperationalProbe,
+)
 from personlogy.shared.errors import DomainValidationError
 
 METRICS_SCHEMA = """
@@ -42,7 +46,7 @@ CREATE TABLE IF NOT EXISTS metrics_projection_failure (
 def _tags(value: str) -> dict[str, str]:
     parsed = json.loads(value)
     if not isinstance(parsed, dict):
-        raise ValueError("stored metric tags are not an object")
+        raise TypeError("stored metric tags are not an object")
     return cast(dict[str, str], parsed)
 
 

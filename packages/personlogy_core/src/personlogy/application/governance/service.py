@@ -9,7 +9,11 @@ from uuid import UUID
 from personlogy.application.audit import append_audit_event
 from personlogy.application.lineage import add_lineage_link
 from personlogy.domain.audit import digest_for
-from personlogy.domain.governance.models import CandidateKind, ReviewTask, ReviewTaskStatus
+from personlogy.domain.governance.models import (
+    CandidateKind,
+    ReviewTask,
+    ReviewTaskStatus,
+)
 from personlogy.domain.knowledge.models import VerificationStatus
 from personlogy.ports.audit import AuditSink
 from personlogy.ports.lineage import LineageStore
