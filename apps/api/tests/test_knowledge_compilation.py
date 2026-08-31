@@ -5,8 +5,10 @@ from uuid import UUID
 
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
+from personlogy.adapters.sqlite_lineage import SQLiteLineageStore
 from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
 from personlogy.application.governance import GovernanceService
+from personlogy.application.lineage import LineageService
 from personlogy.application.orchestration import JobService
 from personlogy.domain.governance.models import ReviewTaskStatus
 from personlogy.domain.source.models import ContentBlock, Project, Source, SourceKind, SourceVersion
@@ -36,6 +38,7 @@ def test_compilation_service_persists_candidates_and_okf(tmp_path: Path) -> None
 
 async def _test_compilation_service_persists_candidates_and_okf(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "personlogy.sqlite3")
+    lineage = SQLiteLineageStore(tmp_path / "personlogy.sqlite3")
     factory = SQLiteUnitOfWorkFactory(store)
     project = Project("编译测试", "compile-test")
     source = Source(project.id, SourceKind.PDF, "测试 PDF")
@@ -55,6 +58,7 @@ async def _test_compilation_service_persists_candidates_and_okf(tmp_path: Path) 
         job_service,
         DocumentHeuristicCompiler(),
         LocalFileStorage(tmp_path / "files"),
+        lineage_store=lineage,
     )
     job = await service.submit_for_version(
         project_id=project.id,
@@ -80,6 +84,15 @@ async def _test_compilation_service_persists_candidates_and_okf(tmp_path: Path) 
         }
     assert counts == {"knowledge_node": 1, "citation": 1, "claim": 1}
     assert UUID(str(job.payload["source_version_id"])) == version.id
+    source_trace = await LineageService(lineage).trace_source_version(
+        project_id=project.id,
+        source_version_id=version.id,
+    )
+    assert any(
+        link.to_type == "claim" and link.relation_type == "generated"
+        for link in source_trace.links
+    )
+    assert any(link.to_type == "review_task" for link in source_trace.links)
 
     governance = GovernanceService(factory)
     tasks = await governance.list_review_tasks()

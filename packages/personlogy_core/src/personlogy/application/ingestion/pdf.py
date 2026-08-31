@@ -6,10 +6,12 @@ import hashlib
 from dataclasses import dataclass
 from uuid import UUID
 
+from personlogy.application.lineage import add_lineage_link
 from personlogy.application.orchestration import JobService
 from personlogy.domain.job import Job
 from personlogy.domain.source.models import ContentBlock, Project, Source, SourceKind, SourceVersion
 from personlogy.ports.ingestion import ObjectStorage, PdfParser
+from personlogy.ports.lineage import LineageStore
 from personlogy.ports.unit_of_work import UnitOfWorkFactory
 from personlogy.shared.errors import DomainValidationError
 
@@ -40,12 +42,14 @@ class PdfImportService:
         parser: PdfParser,
         *,
         max_size_bytes: int,
+        lineage_store: LineageStore | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._job_service = job_service
         self._storage = storage
         self._parser = parser
         self._max_size_bytes = max_size_bytes
+        self._lineage_store = lineage_store
 
     async def import_pdf(
         self,
@@ -104,6 +108,24 @@ class PdfImportService:
                 "object_key": version.object_key,
                 "content_hash": version.content_hash,
             },
+        )
+        await add_lineage_link(
+            self._lineage_store,
+            project_id=project.id,
+            from_type="source",
+            from_id=source_id,
+            relation_type="has_version",
+            to_type="source_version",
+            to_id=version.id,
+        )
+        await add_lineage_link(
+            self._lineage_store,
+            project_id=project.id,
+            from_type="job",
+            from_id=job.id,
+            relation_type="input",
+            to_type="source_version",
+            to_id=version.id,
         )
         return PdfImportResult(
             project_id=project.id,

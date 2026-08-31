@@ -26,6 +26,10 @@ class Job:
     max_attempts: int = 3
     timeout_seconds: int = 900
     id: UUID = field(default_factory=uuid4)
+    trace_id: str = field(default_factory=lambda: f"job-{uuid4().hex}")
+    request_id: str | None = None
+    span_id: str | None = None
+    parent_span_id: str | None = None
     status: JobStatus = JobStatus.QUEUED
     progress: int = 0
     stage: str = "queued"
@@ -39,6 +43,8 @@ class Job:
     def __post_init__(self) -> None:
         if not self.kind.strip() or not self.idempotency_key.strip():
             raise DomainValidationError("job kind and idempotency key are required")
+        if not self.trace_id.strip():
+            raise DomainValidationError("job trace id is required")
         if self.max_attempts < 1 or self.timeout_seconds < 1:
             raise DomainValidationError("job retry and timeout limits must be positive")
         if not 0 <= self.progress <= 100:

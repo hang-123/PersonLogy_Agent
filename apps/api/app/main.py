@@ -5,6 +5,7 @@ from uuid import uuid4
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from personlogy.shared.trace import TraceContext
 
 from app import __version__, runtime
 from app.api.errors import register_error_handlers
@@ -41,10 +42,19 @@ def create_app() -> FastAPI:
     @application.middleware("http")
     async def request_context(request: Request, call_next):  # type: ignore[no-untyped-def]
         request_id = request.headers.get("X-Request-ID", str(uuid4()))
-        structlog.contextvars.bind_contextvars(request_id=request_id)
-        response = await call_next(request)
+        context = TraceContext.root(request_id=request_id, actor_type="http")
+        with context.activate():
+            structlog.contextvars.bind_contextvars(
+                request_id=request_id,
+                trace_id=context.trace_id,
+                span_id=context.span_id,
+            )
+            try:
+                response = await call_next(request)
+            finally:
+                structlog.contextvars.clear_contextvars()
         response.headers["X-Request-ID"] = request_id
-        structlog.contextvars.clear_contextvars()
+        response.headers["X-Trace-ID"] = context.trace_id
         return response
 
     application.add_middleware(

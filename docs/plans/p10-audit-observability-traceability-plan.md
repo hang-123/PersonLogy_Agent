@@ -1,7 +1,9 @@
-# P10 审查、监控与回溯基础设施开发计划（讨论稿）
+# P10 审计、监控与回溯基础设施开发计划（收敛版）
 
-版本：v0.1  
+版本：v0.2
 定位：跨 P6/P7/P8/P9 的公共基础设施，不改变业务模块职责
+
+> P10 的最小记录原子、模块边界和第一版范围以[收敛架构说明](p10-minimal-record-architecture.md)为准；本文保留详细的接口、工具闸门、血缘和实施拆分。
 
 ## 1. 建设目标
 
@@ -145,6 +147,51 @@ ToolIntent
 5. **跨进程持久化**：`trace_id`、`parent_span_id`、`job_id`、`attempt_id` 和工具意图摘要写入 Job/事件上下文，不能只放在内存上下文变量中。
 
 需要区分两类“记录”：不要求把每条内部 SQL 或每个函数调用都作为审计事件；要求所有对外部工具、状态变化、阶段边界和模型调用都从统一执行器进入，并且能在覆盖矩阵中证明没有漏掉关键边界。
+
+### 2.8 最小记录原子与元数据
+
+P10 的记录原子定义为一条不可变 `AuditEvent`，表示一个已经发生或被明确拒绝的事实。一次工具调用不是一条可更新的记录，而是多个事件组成的生命周期：`tool.requested`、审查结果、`tool.denied` 或 `tool.started`，以及最终的 `tool.succeeded/failed`。这样可以保留中途崩溃、超时和拒绝等部分事实，不能依赖事后更新一行记录来“补齐”。
+
+最小事件可以抽象为：
+
+```text
+AuditEvent
+  identity:   event_id, occurred_at, event_type, schema_version
+  context:    trace_id, span_id, actor_type, actor_id
+  target:     entity_type, entity_id
+  outcome:    status, reason_code/error_code
+  integrity:  sequence, prev_hash, event_hash
+  evidence:   metadata (受控 JSON，含必要摘要/哈希)
+```
+
+其中前五组构成通用最小信封：
+
+- `event_id`：事件唯一标识；
+- `occurred_at`：事件发生时间，统一 UTC；
+- `event_type`：事件词典中的稳定类型，如 `job.started`、`tool.denied`；
+- `schema_version`：事件结构版本；
+- `trace_id`：所属逻辑链路；
+- `span_id`：本次阶段/审查/工具执行的具体节点；
+- `actor_type`、`actor_id`：谁触发或代表谁执行，系统事件使用 `system`；
+- `entity_type`、`entity_id`：事件作用对象；工具调用使用 `tool_invocation` 和调用 ID；
+- `status`：`requested`、`started`、`succeeded`、`failed`、`denied` 等有限枚举；
+- `reason_code` 或 `error_code`：拒绝、失败和降级的机器可检索原因；
+- `sequence`、`prev_hash`、`event_hash`：全局哈希链所需的顺序和完整性字段。
+
+以下字段不是所有事件都必须有，而是按场景条件必填：
+
+| 场景 | 条件字段 |
+| --- | --- |
+| HTTP 入口 | `request_id`、`route`、`http_status` |
+| Job/Worker | `job_id`、`attempt_id`、`parent_job_id` |
+| 工具调用 | `tool_invocation_id`、`tool_name`、`tool_version`、`risk_class`、`args_digest`、`result_digest` |
+| 状态变化 | `before_digest`、`after_digest`、`version` |
+| 模型调用 | `model_name`、`model_version`、`prompt_digest`、`response_digest` |
+| 血缘关系 | `source_ref`、`derived_ref`、`relation_type` |
+
+`metadata` 不能作为无限制的原文容器，而应是经过字段白名单和大小限制的受控 JSON。默认只保存 ID、版本、枚举、错误码、脱敏摘要和哈希；完整 Prompt、原文、密钥和工具返回内容不进入审计事件。
+
+因此，“最小可审计事实”可以概括为：**谁，在什么 trace/span 中，于何时，对什么对象，尝试做了什么，结果如何，并且这条记录是否能通过哈希链验证。** `request_id`、`job_id`、`attempt_id` 等是用于跨边界定位的条件元数据，不应被误认为每条事件都必须填充。
 
 重点指标：
 

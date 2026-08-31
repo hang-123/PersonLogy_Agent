@@ -8,13 +8,15 @@ from dataclasses import dataclass, replace
 from uuid import UUID
 
 from personlogy.application.governance import GovernanceEvaluator
+from personlogy.application.lineage import add_lineage_link
 from personlogy.application.orchestration import JobService
-from personlogy.domain.governance.models import GovernanceRunStatus
+from personlogy.domain.governance.models import GovernanceRunStatus, ReviewTask
 from personlogy.domain.job import Job
 from personlogy.domain.knowledge.models import VerificationStatus
 from personlogy.domain.source.models import ContentBlock
 from personlogy.ports.compilation import CompilationBundle, KnowledgeCompiler
 from personlogy.ports.ingestion import ObjectStorage
+from personlogy.ports.lineage import LineageStore
 from personlogy.ports.unit_of_work import UnitOfWorkFactory
 from personlogy.shared.errors import DomainValidationError
 
@@ -44,12 +46,14 @@ class CompilationService:
         compiler: KnowledgeCompiler,
         okf_storage: ObjectStorage,
         governance_evaluator: GovernanceEvaluator | None = None,
+        lineage_store: LineageStore | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._job_service = job_service
         self._compiler = compiler
         self._okf_storage = okf_storage
         self._governance_evaluator = governance_evaluator or GovernanceEvaluator()
+        self._lineage_store = lineage_store
 
     async def submit_for_version(
         self, *, project_id: UUID, source_version_id: UUID
@@ -120,6 +124,16 @@ class CompilationService:
                 await uow.governance.add_review_task(review_task)
             await uow.commit()
 
+        await self._record_lineage(
+            project_id=project_id,
+            job=job,
+            source_version_id=source_version_id,
+            blocks=blocks,
+            bundle=bundle,
+            governance_run_id=evaluation.run.id,
+            review_tasks=evaluation.review_tasks,
+        )
+
         return CompilationResult(
             job_id=job.id,
             source_version_id=source_version_id,
@@ -135,6 +149,134 @@ class CompilationService:
             review_task_count=len(evaluation.review_tasks),
             issue_count=len(evaluation.issues),
         )
+
+    async def _record_lineage(
+        self,
+        *,
+        project_id: UUID,
+        job: Job,
+        source_version_id: UUID,
+        blocks: tuple[ContentBlock, ...],
+        bundle: CompilationBundle,
+        governance_run_id: UUID,
+        review_tasks: tuple[ReviewTask, ...],
+    ) -> None:
+        await add_lineage_link(
+            self._lineage_store,
+            project_id=project_id,
+            from_type="job",
+            from_id=job.id,
+            relation_type="input",
+            to_type="source_version",
+            to_id=source_version_id,
+        )
+        for block in blocks:
+            await add_lineage_link(
+                self._lineage_store,
+                project_id=project_id,
+                from_type="source_version",
+                from_id=source_version_id,
+                relation_type="parsed_as",
+                to_type="content_block",
+                to_id=block.id,
+            )
+        for citation in bundle.citations:
+            await add_lineage_link(
+                self._lineage_store,
+                project_id=project_id,
+                from_type="content_block",
+                from_id=citation.content_block_id,
+                relation_type="extracted_as",
+                to_type="citation",
+                to_id=citation.id,
+            )
+        for node in bundle.nodes:
+            await add_lineage_link(
+                self._lineage_store,
+                project_id=project_id,
+                from_type="job",
+                from_id=job.id,
+                relation_type="produced",
+                to_type="node",
+                to_id=node.id,
+            )
+        for claim in bundle.claims:
+            await add_lineage_link(
+                self._lineage_store,
+                project_id=project_id,
+                from_type="source_version",
+                from_id=source_version_id,
+                relation_type="generated",
+                to_type="claim",
+                to_id=claim.id,
+            )
+            await add_lineage_link(
+                self._lineage_store,
+                project_id=project_id,
+                from_type="job",
+                from_id=job.id,
+                relation_type="produced",
+                to_type="claim",
+                to_id=claim.id,
+            )
+            for citation in claim.citations:
+                await add_lineage_link(
+                    self._lineage_store,
+                    project_id=project_id,
+                    from_type="claim",
+                    from_id=claim.id,
+                    relation_type="supported_by",
+                    to_type="citation",
+                    to_id=citation.id,
+                )
+        for relation in bundle.relations:
+            await add_lineage_link(
+                self._lineage_store,
+                project_id=project_id,
+                from_type="job",
+                from_id=job.id,
+                relation_type="produced",
+                to_type="relation",
+                to_id=relation.id,
+            )
+            for citation_id in relation.citation_ids:
+                await add_lineage_link(
+                    self._lineage_store,
+                    project_id=project_id,
+                    from_type="relation",
+                    from_id=relation.id,
+                    relation_type="supported_by",
+                    to_type="citation",
+                    to_id=citation_id,
+                )
+        await add_lineage_link(
+            self._lineage_store,
+            project_id=project_id,
+            from_type="job",
+            from_id=job.id,
+            relation_type="produced",
+            to_type="governance_run",
+            to_id=governance_run_id,
+        )
+        for review_task in review_tasks:
+            await add_lineage_link(
+                self._lineage_store,
+                project_id=project_id,
+                from_type="governance_run",
+                from_id=governance_run_id,
+                relation_type="created",
+                to_type="review_task",
+                to_id=review_task.id,
+            )
+            await add_lineage_link(
+                self._lineage_store,
+                project_id=project_id,
+                from_type="review_task",
+                from_id=review_task.id,
+                relation_type="reviews",
+                to_type=review_task.candidate_kind.value,
+                to_id=review_task.candidate_id,
+            )
 
     @staticmethod
     def _validate_bundle(

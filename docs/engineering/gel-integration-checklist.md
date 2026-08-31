@@ -115,7 +115,7 @@
 
 **P1-11. worker 静态检查重跑**
 - 独立 worker 新 import `CompilationService` 等，需重跑 ruff/mypy 并更新
-  `p6_delivery.md` 的验证结论（当前写的是旧状态）。
+  `docs/tasks/tp-06-governance/delivery.md` 的验证结论（当前写的是旧状态）。
 
 ### P2 —— 文档 / 契约同步
 
@@ -124,7 +124,7 @@
 - §2.4 补 Gel 7 验证点（`??` coalesce + `<datetime>` cast）；
 - §4 验证章节补治理闭环与真实实例运行方式。
 
-**P2-13. `p6_delivery.md`**
+**P2-13. `docs/tasks/tp-06-governance/delivery.md`**
 - "SQLite 持久化，同时保留未来 GEL Repository 替换接口" → 更新为 Gel 治理仓储已落地（待实例验证）。
 
 **P2-14. `GEL/README.md`**

@@ -87,7 +87,7 @@ class RetrievalReader(Protocol):
 
 
 class RetrievalIndexer(Protocol):
-    async def rebuild_project(self, project_id: UUID) -> int: ...
+    async def rebuild_project(self, project_id: UUID, *, job_id: UUID | None = None) -> int: ...
 
 
 __all__ = [

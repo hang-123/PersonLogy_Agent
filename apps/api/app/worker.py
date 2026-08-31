@@ -1,7 +1,9 @@
 import asyncio
+from functools import partial
 from uuid import UUID
 
 import structlog
+from personlogy.shared.trace import TraceContext
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -10,6 +12,7 @@ from app.runtime import (
     job_service,
     pdf_import_service,
     retrieval_indexer,
+    stage_runner,
 )
 
 
@@ -22,41 +25,71 @@ async def run_worker() -> None:
         job = await job_service.start_next(timeout_seconds=settings.queue_poll_interval_seconds)
         if job is None:
             continue
-        logger.info("job_claimed", job_id=str(job.id), kind=job.kind, attempt=job.attempt)
-        try:
-            if job.kind == "pdf.parse":
-                await job_service.report_progress(job.id, 20, "parsing")
-                block_count = await pdf_import_service.process_pdf_job(job)
-                await job_service.report_progress(
-                    job.id, 90, f"content_blocks_written:{block_count}"
-                )
-                await compilation_service.submit_for_version(
-                    project_id=UUID(str(job.payload["project_id"])),
-                    source_version_id=UUID(str(job.payload["source_version_id"])),
-                )
-            elif job.kind == "knowledge.compile":
-                await job_service.report_progress(job.id, 20, "compiling_candidates")
-                result = await compilation_service.process_compile_job(job)
-                await job_service.report_progress(
-                    job.id,
-                    90,
-                    f"governance:{result.governance_status}:review_tasks:{result.review_task_count}",
-                )
-            elif job.kind == "retrieval.index":
-                if retrieval_indexer is None:
-                    raise RuntimeError("SQLite retrieval indexer is not configured")
-                await job_service.report_progress(job.id, 20, "rebuilding_retrieval_index")
-                project_id = UUID(str(job.payload["project_id"]))
-                count = await retrieval_indexer.rebuild_project(project_id)
-                await job_service.report_progress(
-                    job.id, 90, f"retrieval_documents_indexed:{count}"
-                )
-            else:
-                await job_service.report_progress(job.id, 10, "accepted")
-            await job_service.succeed(job.id)
-        except Exception as error:
-            logger.exception("job_failed", job_id=str(job.id), error=str(error))
-            await job_service.fail(job.id, str(error), retryable=True)
+        context = TraceContext.from_job(
+            trace_id=job.trace_id,
+            span_id=job.span_id,
+            parent_span_id=job.parent_span_id,
+            request_id=job.request_id,
+        )
+        with context.activate():
+            structlog.contextvars.bind_contextvars(
+                request_id=job.request_id,
+                trace_id=context.trace_id,
+                span_id=context.span_id,
+            )
+            logger.info("job_claimed", job_id=str(job.id), kind=job.kind, attempt=job.attempt)
+            try:
+                if job.kind == "pdf.parse":
+                    await job_service.report_progress(job.id, 20, "parsing")
+                    block_count = await stage_runner.run(
+                        stage="pdf.parse",
+                        job=job,
+                        operation=partial(pdf_import_service.process_pdf_job, job),
+                    )
+                    await job_service.report_progress(
+                        job.id, 90, f"content_blocks_written:{block_count}"
+                    )
+                    await compilation_service.submit_for_version(
+                        project_id=UUID(str(job.payload["project_id"])),
+                        source_version_id=UUID(str(job.payload["source_version_id"])),
+                    )
+                elif job.kind == "knowledge.compile":
+                    await job_service.report_progress(job.id, 20, "compiling_candidates")
+                    result = await stage_runner.run(
+                        stage="knowledge.compile",
+                        job=job,
+                        operation=partial(compilation_service.process_compile_job, job),
+                    )
+                    await job_service.report_progress(
+                        job.id,
+                        90,
+                        f"governance:{result.governance_status}:review_tasks:{result.review_task_count}",
+                    )
+                elif job.kind == "retrieval.index":
+                    if retrieval_indexer is None:
+                        raise RuntimeError("SQLite retrieval indexer is not configured")
+                    await job_service.report_progress(job.id, 20, "rebuilding_retrieval_index")
+                    project_id = UUID(str(job.payload["project_id"]))
+                    count = await stage_runner.run(
+                        stage="retrieval.index",
+                        job=job,
+                        operation=partial(
+                            retrieval_indexer.rebuild_project,
+                            project_id,
+                            job_id=job.id,
+                        ),
+                    )
+                    await job_service.report_progress(
+                        job.id, 90, f"retrieval_documents_indexed:{count}"
+                    )
+                else:
+                    await job_service.report_progress(job.id, 10, "accepted")
+                await job_service.succeed(job.id)
+            except Exception as error:
+                logger.exception("job_failed", job_id=str(job.id), error=str(error))
+                await job_service.fail(job.id, str(error), retryable=True)
+            finally:
+                structlog.contextvars.clear_contextvars()
 
 
 def main() -> None:

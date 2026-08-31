@@ -48,3 +48,5 @@
 - 审计 AI 自身通过专用 `AuditorProvider` 调用，记录 `auditor.review.started/succeeded/failed`，不经过 Tool Gateway，避免递归。
 - 第一版采用 fail-closed：审计 AI 超时、输出非法、审计链失败时，工具不执行。低风险只读降级放行暂不启用。
 - `trace_id` 贯穿完整逻辑链；`span_id`/`parent_span_id` 表达审查与工具执行的嵌套关系；跨进程恢复依赖 Job/事件中持久化的执行上下文。
+- P10 最小记录原子是一条不可变 `AuditEvent`，不是一次请求或一次工具调用的可更新汇总行。通用最小信封包括 event_id、occurred_at、event_type、schema_version、trace_id、span_id、actor、target、status、reason/error code 和 sequence/prev_hash/event_hash。
+- request_id、job_id、attempt_id、tool/model/version、before/after digest、血缘引用等属于条件元数据，按事件类型填充；metadata 使用白名单和大小限制，默认只存摘要/哈希。

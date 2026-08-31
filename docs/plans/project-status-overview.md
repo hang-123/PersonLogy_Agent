@@ -11,7 +11,7 @@
 | P1 现状盘点与重构 | ✅ 已完成 | 模块化单体重构：domain / ports / adapters / application 分层，旧代码迁移 | `8de4289`“重构项目，完成 00-02 任务包” |
 | P2 领域与 Schema | ✅ 已完成 | Project/Source/Version/Block/Node/Citation/Claim/Relation/RelationType/Job + 治理类型；**Gel Schema + migration 00001/00002 + seed**；SQLite 同步建表 | 双后端 schema 就绪 |
 | P3 PDF 导入闭环 | ✅ 已完成（TP-03） | 上传校验、本地落盘（非 MinIO）、hash 去重、SourceVersion、pdfplumber 解析、ContentBlock、`pdf.parse` 任务、`POST /v1/pdfs/upload` | 测试覆盖成功/复用/损坏/超限 |
-| P4 对话导入 | ✅ 已完成 | Conversation/Message 领域模型、标准化解析器、幂等导入、`POST /v1/conversations` | 见 task_plan_p3_local（P3-local 阶段 6–9） |
+| P4 对话导入 | ✅ 已完成 | Conversation/Message 领域模型、标准化解析器、幂等导入、`POST /v1/conversations` | 见 `docs/plans/archive/p3-local-persistence-task-plan.md`（P3-local 阶段 6–9） |
 | P5 知识编译 | ✅ 已完成 | `KnowledgeCompiler` Port + `DocumentHeuristicCompiler`（本地启发式）、`CompilationService`、OKF v0.2 导出、`knowledge.compile` 任务、编译元数据 | 候选保持 `candidate`，不自动发布 |
 | P6 数据治理与审核 | ✅ 已完成（首版） | 机器治理（结构/来源校验、精确重复、保守冲突检测）、GovernanceRun/Issue/DuplicateGroup/ConflictRecord/ReviewTask、`GET /v1/review-tasks`、`POST .../decision` | **语义/LLM 去重未做**（留 Port）；审核不自动回写 |
 | P7 受控回写 | ❌ 未开始 | `application/writeback` 仅 docstring 空壳；治理通过后不自动发布（TP-08） | |

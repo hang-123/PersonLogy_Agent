@@ -9,6 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from personlogy.application.audit import append_audit_event
+from personlogy.application.lineage import add_lineage_link
+from personlogy.domain.audit import digest_for
 from personlogy.domain.schema.models import (
     SchemaChange,
     SchemaChangeKind,
@@ -17,9 +20,12 @@ from personlogy.domain.schema.models import (
     SchemaSnapshot,
     as_definition,
 )
+from personlogy.ports.audit import AuditSink
+from personlogy.ports.lineage import LineageStore
 from personlogy.ports.retrieval import Evidence, RelationPath, RetrievalHit
 from personlogy.ports.schema_management import SchemaRegistry
 from personlogy.shared.errors import DomainValidationError
+from personlogy.shared.trace import TraceContext
 
 FEATURE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS retrieval_document (
@@ -104,11 +110,33 @@ class SQLiteFeatureStore:
 
 
 class SQLiteRetrievalIndexer:
-    def __init__(self, store: SQLiteFeatureStore) -> None:
+    def __init__(
+        self,
+        store: SQLiteFeatureStore,
+        audit_sink: AuditSink | None = None,
+        lineage_store: LineageStore | None = None,
+    ) -> None:
         self._store = store
+        self._audit_sink = audit_sink
+        self._lineage_store = lineage_store
 
-    async def rebuild_project(self, project_id: UUID) -> int:
+    async def rebuild_project(self, project_id: UUID, *, job_id: UUID | None = None) -> int:
+        context = TraceContext.current_or_root().child()
+        build_id = uuid4()
+        entity_id = str(build_id)
+        metadata = {"build_id": entity_id, "project_id": str(project_id)}
+        await append_audit_event(
+            self._audit_sink,
+            event_type="index_build.started",
+            status="started",
+            entity_type="index_build",
+            entity_id=entity_id,
+            context=context,
+            metadata=metadata,
+        )
         connection = self._store.connect()
+        version: int | None = None
+        documents: list[tuple[str, str]] = []
         try:
             connection.execute("BEGIN")
             row = connection.execute(
@@ -117,7 +145,6 @@ class SQLiteRetrievalIndexer:
                 (str(project_id),),
             ).fetchone()
             version = int(row["version"])
-            build_id = uuid4()
             connection.execute(
                 "INSERT INTO retrieval_index_build "
                 "(id, project_id, version, status, document_count, created_at) "
@@ -167,6 +194,7 @@ class SQLiteRetrievalIndexer:
                         _timestamp(datetime.now(UTC)),
                     ),
                 )
+                documents.append((document_id, claim["id"]))
                 connection.execute(
                     "INSERT INTO retrieval_document_fts(document_id, project_id, content) "
                     "VALUES (?, ?, ?)",
@@ -179,9 +207,72 @@ class SQLiteRetrievalIndexer:
                 (count, str(build_id)),
             )
             connection.commit()
+            if job_id is not None:
+                await add_lineage_link(
+                    self._lineage_store,
+                    project_id=project_id,
+                    from_type="job",
+                    from_id=job_id,
+                    relation_type="produced",
+                    to_type="index_build",
+                    to_id=build_id,
+                    metadata={"index_version": version},
+                )
+            for document_id, claim_id in documents:
+                await add_lineage_link(
+                    self._lineage_store,
+                    project_id=project_id,
+                    from_type="index_build",
+                    from_id=build_id,
+                    relation_type="contains",
+                    to_type="retrieval_document",
+                    to_id=document_id,
+                    metadata={"index_version": version},
+                )
+                await add_lineage_link(
+                    self._lineage_store,
+                    project_id=project_id,
+                    from_type="claim",
+                    from_id=claim_id,
+                    relation_type="indexed_as",
+                    to_type="retrieval_document",
+                    to_id=document_id,
+                    metadata={"index_version": version},
+                )
+            await append_audit_event(
+                self._audit_sink,
+                event_type="index_build.succeeded",
+                status="succeeded",
+                entity_type="index_build",
+                entity_id=entity_id,
+                context=context,
+                before={"status": "running", "version": version},
+                after={"status": "succeeded", "version": version, "document_count": count},
+                metadata={
+                    **metadata,
+                    "index_version": version,
+                    "document_count": count,
+                },
+            )
             return count
-        except Exception:
+        except Exception as error:
             connection.rollback()
+            await append_audit_event(
+                self._audit_sink,
+                event_type="index_build.failed",
+                status="failed",
+                entity_type="index_build",
+                entity_id=entity_id,
+                context=context,
+                before={"status": "running", "version": version or 0},
+                after={"status": "failed", "version": version or 0},
+                reason_code="index_build_failure",
+                metadata={
+                    **metadata,
+                    "index_version": version or 0,
+                    "error_digest": digest_for(str(error)),
+                },
+            )
             raise
         finally:
             connection.close()

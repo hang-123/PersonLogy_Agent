@@ -27,4 +27,4 @@
 - `apply_patch` 多次因 Windows sandbox helper 失败；审查记录文件使用受限目录内的安全写入回退完成。
 
 ## Status
-**Complete** - 已完成代码、文档、工作簿和测试交叉审查，结果见 `p0-p6-review.md`。
+**Complete** - 已完成代码、文档、工作簿和测试交叉审查，结果见 `../p0-p6-review.md`。

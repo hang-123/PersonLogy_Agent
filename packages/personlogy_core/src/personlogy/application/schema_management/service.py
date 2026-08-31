@@ -8,19 +8,23 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
+from personlogy.application.audit import append_audit_event
+from personlogy.domain.audit import digest_for
 from personlogy.domain.schema.models import (
     SchemaChange,
     SchemaChangeKind,
     SchemaProposal,
     SchemaProposalStatus,
 )
+from personlogy.ports.audit import AuditSink
 from personlogy.ports.schema_management import SchemaRegistry
 from personlogy.shared.errors import DomainValidationError
 
 
 class SchemaChangeService:
-    def __init__(self, registry: SchemaRegistry) -> None:
+    def __init__(self, registry: SchemaRegistry, audit_sink: AuditSink | None = None) -> None:
         self._registry = registry
+        self._audit_sink = audit_sink
 
     async def propose(
         self,
@@ -42,6 +46,22 @@ class SchemaChangeService:
             author=author,
         )
         await self._registry.save_proposal(proposal)
+        await append_audit_event(
+            self._audit_sink,
+            event_type="schema.proposal.created",
+            status=proposal.status.value,
+            entity_type="schema_proposal",
+            entity_id=str(proposal.id),
+            before={"version": current.version, "checksum": current.checksum},
+            after={"version": proposal.target_version, "definition": target_definition},
+            metadata={
+                "namespace": namespace,
+                "base_version": proposal.base_version,
+                "target_version": proposal.target_version,
+                "change_count": len(changes),
+                "author_digest": digest_for(author),
+            },
+        )
         return proposal
 
     async def validate(self, proposal_id: UUID) -> SchemaProposal:
@@ -61,6 +81,23 @@ class SchemaChangeService:
             validated_at=datetime.now(UTC),
         )
         await self._registry.save_proposal(updated)
+        await append_audit_event(
+            self._audit_sink,
+            event_type="schema.proposal.validated" if not errors else "schema.proposal.rejected",
+            status=updated.status.value,
+            entity_type="schema_proposal",
+            entity_id=str(updated.id),
+            before={"status": proposal.status.value},
+            after={"status": updated.status.value, "validated": not bool(errors)},
+            reason_code="schema_validation_failed" if errors else None,
+            metadata={
+                "namespace": updated.namespace,
+                "proposal_id": str(updated.id),
+                "base_version": updated.base_version,
+                "target_version": updated.target_version,
+                "errors_digest": digest_for(errors),
+            },
+        )
         if errors:
             raise DomainValidationError("; ".join(errors))
         return updated

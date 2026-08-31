@@ -208,6 +208,10 @@ CREATE TABLE IF NOT EXISTS job (
     kind TEXT NOT NULL,
     idempotency_key TEXT NOT NULL UNIQUE,
     payload TEXT NOT NULL,
+    trace_id TEXT NOT NULL DEFAULT '',
+    request_id TEXT,
+    span_id TEXT,
+    parent_span_id TEXT,
     status TEXT NOT NULL,
     progress INTEGER NOT NULL,
     stage TEXT NOT NULL,
@@ -284,6 +288,25 @@ def _ensure_metadata_columns(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _ensure_job_trace_columns(connection: sqlite3.Connection) -> None:
+    """Upgrade databases created before P10 trace context persistence."""
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(job)").fetchall()
+    }
+    if "trace_id" not in columns:
+        connection.execute("ALTER TABLE job ADD COLUMN trace_id TEXT NOT NULL DEFAULT ''")
+    if "request_id" not in columns:
+        connection.execute("ALTER TABLE job ADD COLUMN request_id TEXT")
+    if "span_id" not in columns:
+        connection.execute("ALTER TABLE job ADD COLUMN span_id TEXT")
+    if "parent_span_id" not in columns:
+        connection.execute("ALTER TABLE job ADD COLUMN parent_span_id TEXT")
+    connection.execute(
+        "UPDATE job SET trace_id = 'job:' || id WHERE trace_id IS NULL OR trace_id = ''"
+    )
+    connection.commit()
+
+
 class SQLiteStore:
     """Database handle shared by UoW and queue instances."""
 
@@ -295,6 +318,7 @@ class SQLiteStore:
         try:
             connection.executescript(SCHEMA)
             _ensure_metadata_columns(connection)
+            _ensure_job_trace_columns(connection)
         finally:
             connection.close()
 
@@ -928,10 +952,11 @@ class SQLiteJobRepository:
         try:
             self._connection.execute(
                 """INSERT INTO job
-                   (id, kind, idempotency_key, payload, status, progress, stage, attempt,
+                   (id, kind, idempotency_key, payload, trace_id, request_id, span_id,
+                    parent_span_id, status, progress, stage, attempt,
                     max_attempts, timeout_seconds, failure_reason, next_attempt_at,
                     created_at, started_at, finished_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 self._values(job),
             )
         except sqlite3.IntegrityError as error:
@@ -939,8 +964,9 @@ class SQLiteJobRepository:
 
     async def save(self, job: Job) -> None:
         cursor = self._connection.execute(
-            """UPDATE job SET kind = ?, idempotency_key = ?, payload = ?, status = ?,
-               progress = ?, stage = ?, attempt = ?, max_attempts = ?, timeout_seconds = ?,
+            """UPDATE job SET kind = ?, idempotency_key = ?, payload = ?, trace_id = ?,
+               request_id = ?, span_id = ?, parent_span_id = ?, status = ?, progress = ?,
+               stage = ?, attempt = ?, max_attempts = ?, timeout_seconds = ?,
                failure_reason = ?, next_attempt_at = ?, created_at = ?, started_at = ?,
                finished_at = ? WHERE id = ?""",
             (*self._values(job)[1:], _id(job.id)),
@@ -971,6 +997,10 @@ class SQLiteJobRepository:
             job.kind,
             job.idempotency_key,
             _json(job.payload),
+            job.trace_id,
+            job.request_id,
+            job.span_id,
+            job.parent_span_id,
             job.status.value,
             job.progress,
             job.stage,
@@ -993,6 +1023,10 @@ class SQLiteJobRepository:
             max_attempts=row["max_attempts"],
             timeout_seconds=row["timeout_seconds"],
             id=UUID(row["id"]),
+            trace_id=row["trace_id"],
+            request_id=row["request_id"],
+            span_id=row["span_id"],
+            parent_span_id=row["parent_span_id"],
             status=JobStatus(row["status"]),
             progress=row["progress"],
             stage=row["stage"],

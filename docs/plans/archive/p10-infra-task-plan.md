@@ -36,6 +36,8 @@
 - 第一版默认 fail-closed：审计 AI 超时、输出格式错误或审计链写入失败时，不执行工具；后续只有在明确批准后，才考虑对低风险纯只读工具做降级策略。
 - 审计 AI 自身的调用也要记录为 `auditor.review.started/succeeded/failed`，但不再经过 Tool Gateway，避免递归；它使用无工具的专用 `AuditorProvider` 端口。
 - `trace_id` 贯穿请求、阶段、审计 AI 审查和实际工具执行；`span_id`/`parent_span_id` 表达嵌套关系，`job_id`/`attempt_id` 负责跨进程任务与重试定位。当前调用栈用上下文传播，跨进程恢复则把执行上下文持久化到 Job 和审计事件。
+- 最小记录原子是一条不可变 `AuditEvent`，至少包含事件身份、时间/类型、trace/span、actor、目标、结果、原因和哈希链字段；请求、Job、工具、模型和血缘字段按场景条件必填。
+- 一次工具调用不更新单行记录，而是追加 requested、审查、denied/started、succeeded/failed 等事件，确保中途崩溃和拒绝也可回溯。
 
 ## Errors Encountered
 - 无。
