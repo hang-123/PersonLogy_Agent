@@ -24,6 +24,18 @@
 - When 调用 Migration Tool
 - Then 系统执行迁移、更新 Schema 版本并记录完整审计事件
 
+当前实现：`draft → validated → approved → applied`；未进入 `approved` 的提案不能执行，
+执行前校验当前版本仍等于 `base_version`，执行后产生新的不可变 Snapshot。
+
+### 回滚
+
+- Given 一份已执行的 Schema Proposal 且当前版本仍是该提案的目标版本
+- When 管理员请求回滚
+- Then 系统调用回滚执行器，以更高版本生成原 base definition，不覆盖历史 Snapshot，并记录 `rolled_back` 审计事件
+- Given 当前已经存在更高版本
+- When 请求回滚旧提案
+- Then 系统拒绝回滚，避免越过后续 Schema 变更
+
 ### 未审批禁止执行
 
 - Given Schema/Migration 提案未通过审批
@@ -35,4 +47,3 @@
 - Given 用户导入一批新的 PDF 或对话
 - When 系统执行知识编译和写回
 - Then 系统使用当前 Schema 写入数据，不自动建表或删表
-

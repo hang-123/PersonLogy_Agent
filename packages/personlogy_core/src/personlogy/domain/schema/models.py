@@ -18,6 +18,7 @@ class SchemaProposalStatus(StrEnum):
     VALIDATED = "validated"
     APPROVED = "approved"
     APPLIED = "applied"
+    ROLLED_BACK = "rolled_back"
     REJECTED = "rejected"
 
 
@@ -81,7 +82,10 @@ class SchemaProposal:
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     validated_at: datetime | None = None
+    approved_by: str | None = None
+    approved_at: datetime | None = None
     applied_at: datetime | None = None
+    rolled_back_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.namespace.strip():

@@ -60,8 +60,7 @@ CREATE TABLE IF NOT EXISTS schema_snapshot (
     checksum TEXT NOT NULL,
     definition TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    UNIQUE(namespace, version),
-    UNIQUE(namespace, checksum)
+    UNIQUE(namespace, version)
 );
 CREATE TABLE IF NOT EXISTS schema_proposal (
     id TEXT PRIMARY KEY,
@@ -74,7 +73,10 @@ CREATE TABLE IF NOT EXISTS schema_proposal (
     status TEXT NOT NULL,
     created_at TEXT NOT NULL,
     validated_at TEXT,
-    applied_at TEXT
+    approved_by TEXT,
+    approved_at TEXT,
+    applied_at TEXT,
+    rolled_back_at TEXT
 );
 CREATE TABLE IF NOT EXISTS schema_audit (
     id TEXT PRIMARY KEY,
@@ -99,6 +101,15 @@ class SQLiteFeatureStore:
         connection = self.connect()
         try:
             connection.executescript(FEATURE_SCHEMA)
+            _ensure_snapshot_checksum_constraint_removed(connection)
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(schema_proposal)").fetchall()
+            }
+            for column in ("approved_by", "approved_at", "rolled_back_at"):
+                if column not in columns:
+                    connection.execute(f"ALTER TABLE schema_proposal ADD COLUMN {column} TEXT")
+            connection.commit()
         finally:
             connection.close()
 
@@ -109,6 +120,40 @@ class SQLiteFeatureStore:
         connection.execute("PRAGMA busy_timeout = 5000")
         return connection
 
+
+def _ensure_snapshot_checksum_constraint_removed(connection: sqlite3.Connection) -> None:
+    """Allow a rollback to create a new version with a historical definition."""
+
+    indexes = connection.execute("PRAGMA index_list(schema_snapshot)").fetchall()
+    for index in indexes:
+        if not index["unique"]:
+            continue
+        columns = [
+            item["name"]
+            for item in connection.execute(f"PRAGMA index_info([{index['name']}])").fetchall()
+        ]
+        if columns != ["namespace", "checksum"]:
+            continue
+        connection.execute("ALTER TABLE schema_snapshot RENAME TO schema_snapshot_legacy")
+        connection.execute(
+            """CREATE TABLE schema_snapshot (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                checksum TEXT NOT NULL,
+                definition TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(namespace, version)
+            )"""
+        )
+        connection.execute(
+            """INSERT INTO schema_snapshot
+               (id, namespace, version, checksum, definition, created_at)
+               SELECT id, namespace, version, checksum, definition, created_at
+               FROM schema_snapshot_legacy"""
+        )
+        connection.execute("DROP TABLE schema_snapshot_legacy")
+        break
 
 class SQLiteRetrievalIndexer:
     def __init__(
@@ -435,6 +480,17 @@ class SQLiteSchemaRegistry(SchemaRegistry):
         finally:
             connection.close()
 
+    async def get_snapshot(self, namespace: str, version: int) -> SchemaSnapshot | None:
+        connection = self._store.connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM schema_snapshot WHERE namespace = ? AND version = ?",
+                (namespace, version),
+            ).fetchone()
+            return _snapshot_from_row(row) if row else None
+        finally:
+            connection.close()
+
     async def save_snapshot(self, snapshot: SchemaSnapshot) -> None:
         connection = self._store.connect()
         try:
@@ -455,7 +511,43 @@ class SQLiteSchemaRegistry(SchemaRegistry):
         except sqlite3.IntegrityError as error:
             connection.rollback()
             raise DomainValidationError(
-                "schema snapshot version or checksum already exists"
+                "schema snapshot version already exists"
+            ) from error
+        finally:
+            connection.close()
+
+    async def save_snapshot_if_current(
+        self, snapshot: SchemaSnapshot, *, expected_version: int
+    ) -> None:
+        connection = self._store.connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT MAX(version) AS version FROM schema_snapshot WHERE namespace = ?",
+                (snapshot.namespace,),
+            ).fetchone()
+            current_version = int(row["version"]) if row and row["version"] is not None else None
+            if current_version != expected_version:
+                connection.rollback()
+                raise DomainValidationError("schema version changed concurrently")
+            connection.execute(
+                "INSERT INTO schema_snapshot "
+                "(id, namespace, version, checksum, definition, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    str(snapshot.id),
+                    snapshot.namespace,
+                    snapshot.version,
+                    snapshot.checksum,
+                    _json(snapshot.definition),
+                    _timestamp(snapshot.created_at),
+                ),
+            )
+            connection.commit()
+        except sqlite3.IntegrityError as error:
+            connection.rollback()
+            raise DomainValidationError(
+                "schema snapshot version already exists"
             ) from error
         finally:
             connection.close()
@@ -466,11 +558,14 @@ class SQLiteSchemaRegistry(SchemaRegistry):
             connection.execute(
                 """INSERT INTO schema_proposal
                    (id, namespace, base_version, target_version, definition, changes, author,
-                    status, created_at, validated_at, applied_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    status, created_at, validated_at, approved_by, approved_at, applied_at,
+                    rolled_back_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET status = excluded.status,
                     definition = excluded.definition, changes = excluded.changes,
-                    validated_at = excluded.validated_at, applied_at = excluded.applied_at""",
+                    validated_at = excluded.validated_at, approved_by = excluded.approved_by,
+                    approved_at = excluded.approved_at, applied_at = excluded.applied_at,
+                    rolled_back_at = excluded.rolled_back_at""",
                 (
                     str(proposal.id),
                     proposal.namespace,
@@ -482,7 +577,10 @@ class SQLiteSchemaRegistry(SchemaRegistry):
                     proposal.status.value,
                     _timestamp(proposal.created_at),
                     _timestamp(proposal.validated_at) if proposal.validated_at else None,
+                    proposal.approved_by,
+                    _timestamp(proposal.approved_at) if proposal.approved_at else None,
                     _timestamp(proposal.applied_at) if proposal.applied_at else None,
+                    _timestamp(proposal.rolled_back_at) if proposal.rolled_back_at else None,
                 ),
             )
             connection.commit()
@@ -554,7 +652,14 @@ def _proposal_from_row(row: sqlite3.Row) -> SchemaProposal:
         validated_at=(
             datetime.fromisoformat(row["validated_at"]) if row["validated_at"] else None
         ),
+        approved_by=row["approved_by"],
+        approved_at=(
+            datetime.fromisoformat(row["approved_at"]) if row["approved_at"] else None
+        ),
         applied_at=datetime.fromisoformat(row["applied_at"]) if row["applied_at"] else None,
+        rolled_back_at=(
+            datetime.fromisoformat(row["rolled_back_at"]) if row["rolled_back_at"] else None
+        ),
     )
 
 

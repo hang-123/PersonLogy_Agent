@@ -9,6 +9,7 @@ from app.modules.monitoring.router import router as monitoring_router
 from app.modules.pdfs.router import router as pdfs_router
 from app.modules.replay.router import router as replay_router
 from app.modules.retrieval.router import router as retrieval_router
+from app.modules.schema_management.router import router as schema_management_router
 from app.modules.sources.router import router as sources_router
 
 api_router = APIRouter()
@@ -22,3 +23,4 @@ api_router.include_router(sources_router)
 api_router.include_router(lineage_router)
 api_router.include_router(monitoring_router)
 api_router.include_router(replay_router)
+api_router.include_router(schema_management_router)

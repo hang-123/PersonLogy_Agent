@@ -15,16 +15,23 @@ from personlogy.domain.schema.models import (
     SchemaChangeKind,
     SchemaProposal,
     SchemaProposalStatus,
+    SchemaSnapshot,
 )
 from personlogy.ports.audit import AuditSink
-from personlogy.ports.schema_management import SchemaRegistry
+from personlogy.ports.schema_management import MigrationExecutor, SchemaRegistry
 from personlogy.shared.errors import DomainValidationError
 
 
 class SchemaChangeService:
-    def __init__(self, registry: SchemaRegistry, audit_sink: AuditSink | None = None) -> None:
+    def __init__(
+        self,
+        registry: SchemaRegistry,
+        audit_sink: AuditSink | None = None,
+        migration_executor: MigrationExecutor | None = None,
+    ) -> None:
         self._registry = registry
         self._audit_sink = audit_sink
+        self._migration_executor = migration_executor or RegistryMigrationExecutor()
 
     async def propose(
         self,
@@ -64,6 +71,9 @@ class SchemaChangeService:
         )
         return proposal
 
+    async def get(self, proposal_id: UUID) -> SchemaProposal | None:
+        return await self._registry.get_proposal(proposal_id)
+
     async def validate(self, proposal_id: UUID) -> SchemaProposal:
         proposal = await self._registry.get_proposal(proposal_id)
         if proposal is None:
@@ -101,6 +111,214 @@ class SchemaChangeService:
         if errors:
             raise DomainValidationError("; ".join(errors))
         return updated
+
+    async def approve(
+        self, proposal_id: UUID, *, approver: str
+    ) -> SchemaProposal:
+        proposal = await self._get_proposal(proposal_id)
+        if proposal.status is not SchemaProposalStatus.VALIDATED:
+            raise DomainValidationError("only a validated schema proposal can be approved")
+        if not approver.strip():
+            raise DomainValidationError("schema approver is required")
+        approved = replace(
+            proposal,
+            status=SchemaProposalStatus.APPROVED,
+            approved_by=approver,
+            approved_at=datetime.now(UTC),
+        )
+        await self._registry.save_proposal(approved)
+        await append_audit_event(
+            self._audit_sink,
+            event_type="schema.proposal.approved",
+            status=approved.status.value,
+            entity_type="schema_proposal",
+            entity_id=str(approved.id),
+            before={"status": proposal.status.value},
+            after={"status": approved.status.value, "approved_at": approved.approved_at},
+            metadata={
+                "namespace": approved.namespace,
+                "proposal_id": str(approved.id),
+                "base_version": approved.base_version,
+                "target_version": approved.target_version,
+                "actor_id_digest": digest_for(approver),
+            },
+        )
+        return approved
+
+    async def execute(self, proposal_id: UUID) -> SchemaProposal:
+        proposal = await self._get_proposal(proposal_id)
+        if proposal.status is not SchemaProposalStatus.APPROVED:
+            raise DomainValidationError("only an approved schema proposal can be executed")
+        current = await self._registry.get_current_snapshot(proposal.namespace)
+        if current is None or current.version != proposal.base_version:
+            await self._record_execution_failure(
+                proposal, "schema_version_conflict", current=current
+            )
+            raise DomainValidationError("schema proposal base version is stale")
+        try:
+            await self._migration_executor.apply(proposal=proposal, current=current)
+            applied_snapshot = SchemaSnapshot.create(
+                namespace=proposal.namespace,
+                version=proposal.target_version,
+                definition=proposal.definition,
+            )
+            await self._registry.save_snapshot_if_current(
+                applied_snapshot, expected_version=current.version
+            )
+        except Exception as error:
+            await self._record_execution_failure(
+                proposal, "schema_execution_failed", current=current, error=error
+            )
+            raise DomainValidationError("schema proposal execution failed") from error
+
+        applied = replace(
+            proposal,
+            status=SchemaProposalStatus.APPLIED,
+            applied_at=datetime.now(UTC),
+        )
+        await self._registry.save_proposal(applied)
+        await append_audit_event(
+            self._audit_sink,
+            event_type="schema.proposal.applied",
+            status=applied.status.value,
+            entity_type="schema_proposal",
+            entity_id=str(applied.id),
+            before={"status": proposal.status.value, "version": current.version},
+            after={"status": applied.status.value, "version": applied.target_version},
+            metadata={
+                "namespace": applied.namespace,
+                "proposal_id": str(applied.id),
+                "base_version": applied.base_version,
+                "target_version": applied.target_version,
+                "change_count": len(applied.changes),
+            },
+        )
+        return applied
+
+    async def rollback(self, proposal_id: UUID) -> SchemaProposal:
+        proposal = await self._get_proposal(proposal_id)
+        if proposal.status is not SchemaProposalStatus.APPLIED:
+            raise DomainValidationError("only an applied schema proposal can be rolled back")
+        current = await self._registry.get_current_snapshot(proposal.namespace)
+        target = await self._registry.get_snapshot(proposal.namespace, proposal.base_version)
+        if current is None or target is None:
+            raise DomainValidationError("schema rollback snapshots are unavailable")
+        if current.version != proposal.target_version:
+            raise DomainValidationError(
+                "schema rollback is blocked because a newer version is already current"
+            )
+        try:
+            await self._migration_executor.rollback(
+                proposal=proposal, current=current, target=target
+            )
+            rollback_snapshot = SchemaSnapshot.create(
+                namespace=proposal.namespace,
+                version=current.version + 1,
+                definition=target.definition,
+            )
+            await self._registry.save_snapshot_if_current(
+                rollback_snapshot, expected_version=current.version
+            )
+        except Exception as error:
+            await append_audit_event(
+                self._audit_sink,
+                event_type="schema.proposal.rollback_failed",
+                status="failed",
+                entity_type="schema_proposal",
+                entity_id=str(proposal.id),
+                before={"status": proposal.status.value, "version": current.version},
+                reason_code="schema_rollback_failed",
+                metadata={
+                    "namespace": proposal.namespace,
+                    "proposal_id": str(proposal.id),
+                    "errors_digest": digest_for(str(error)),
+                },
+            )
+            raise DomainValidationError("schema proposal rollback failed") from error
+
+        rolled_back = replace(
+            proposal,
+            status=SchemaProposalStatus.ROLLED_BACK,
+            rolled_back_at=datetime.now(UTC),
+        )
+        await self._registry.save_proposal(rolled_back)
+        await append_audit_event(
+            self._audit_sink,
+            event_type="schema.proposal.rolled_back",
+            status=rolled_back.status.value,
+            entity_type="schema_proposal",
+            entity_id=str(rolled_back.id),
+            before={"status": proposal.status.value, "version": current.version},
+            after={"status": rolled_back.status.value, "version": current.version + 1},
+            metadata={
+                "namespace": rolled_back.namespace,
+                "proposal_id": str(rolled_back.id),
+                "base_version": rolled_back.base_version,
+                "target_version": current.version + 1,
+            },
+        )
+        return rolled_back
+
+    async def _get_proposal(self, proposal_id: UUID) -> SchemaProposal:
+        proposal = await self._registry.get_proposal(proposal_id)
+        if proposal is None:
+            raise DomainValidationError("schema proposal does not exist")
+        return proposal
+
+    async def _record_execution_failure(
+        self,
+        proposal: SchemaProposal,
+        reason_code: str,
+        *,
+        current: SchemaSnapshot | None,
+        error: Exception | None = None,
+    ) -> None:
+        await append_audit_event(
+            self._audit_sink,
+            event_type="schema.proposal.execution_failed",
+            status="failed",
+            entity_type="schema_proposal",
+            entity_id=str(proposal.id),
+            before={
+                "status": proposal.status.value,
+                "version": current.version if current else None,
+            },
+            reason_code=reason_code,
+            metadata={
+                "namespace": proposal.namespace,
+                "proposal_id": str(proposal.id),
+                "errors_digest": digest_for(str(error or reason_code)),
+            },
+        )
+
+
+class RegistryMigrationExecutor:
+    """Safe local executor for logical registry snapshots.
+
+    SQLite stores the versioned schema contract rather than altering its own
+    physical tables. A Gel or database-specific executor can be injected for
+    physical migration execution while retaining this service state machine.
+    """
+
+    async def apply(self, *, proposal: SchemaProposal, current: SchemaSnapshot) -> None:
+        if (
+            current.namespace != proposal.namespace
+            or current.version != proposal.base_version
+        ):
+            raise DomainValidationError("migration current snapshot does not match proposal")
+
+    async def rollback(
+        self,
+        *,
+        proposal: SchemaProposal,
+        current: SchemaSnapshot,
+        target: SchemaSnapshot,
+    ) -> None:
+        if (
+            current.namespace != proposal.namespace
+            or target.version != proposal.base_version
+        ):
+            raise DomainValidationError("migration rollback snapshots do not match proposal")
 
 
 def diff_schema(
