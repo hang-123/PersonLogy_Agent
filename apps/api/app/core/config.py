@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     pdf_max_size_bytes: int = 25 * 1024 * 1024
     queue_backend: Literal["memory", "sqlite", "gel"] = "sqlite"
     queue_poll_interval_seconds: float = 2.0
+    metrics_projector_batch_size: int = 500
+    queue_backlog_degraded_threshold: int = 100
+    index_stale_after_seconds: float = 3600
     cors_origins: list[AnyHttpUrl] = Field(
         default_factory=lambda: [AnyHttpUrl("http://localhost:5173")]
     )

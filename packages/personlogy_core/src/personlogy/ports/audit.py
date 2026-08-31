@@ -1,5 +1,6 @@
 """Ports for the P10 immutable record stream."""
 
+from builtins import list as builtins_list
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -27,6 +28,10 @@ class AuditSink(Protocol):
         event_type: str | None = None,
         limit: int = 100,
     ) -> list[AuditEvent]: ...
+
+    async def list_since(
+        self, sequence: int, *, limit: int = 1000
+    ) -> builtins_list[AuditEvent]: ...
 
     async def verify_chain(self) -> ChainVerification: ...
 

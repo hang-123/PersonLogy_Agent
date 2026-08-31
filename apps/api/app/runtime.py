@@ -14,10 +14,12 @@ from personlogy.adapters.sqlite_features import (
     SQLiteSchemaRegistry,
 )
 from personlogy.adapters.sqlite_lineage import SQLiteLineageStore
+from personlogy.adapters.sqlite_metrics import SQLiteMetricsStore
 from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
 from personlogy.application.governance import GovernanceService
 from personlogy.application.ingestion import ConversationImportService, PdfImportService
 from personlogy.application.lineage import LineageService
+from personlogy.application.monitoring import MetricsProjector, MonitoringService
 from personlogy.application.orchestration import JobService, StageRunner
 from personlogy.application.retrieval import RetrievalService
 from personlogy.application.schema_management import SchemaChangeService
@@ -127,6 +129,23 @@ retrieval_service = RetrievalService(
 lineage_service: LineageService | None = (
     LineageService(lineage_store) if lineage_store is not None else None
 )
+metrics_store: SQLiteMetricsStore | None = None
+monitoring_service: MonitoringService | None = None
+if isinstance(store, SQLiteStore) and audit_sink is not None:
+    metrics_store = SQLiteMetricsStore(store.path)
+    metrics_projector = MetricsProjector(
+        audit_sink,
+        metrics_store,
+        batch_size=settings.metrics_projector_batch_size,
+    )
+    monitoring_service = MonitoringService(
+        metrics_projector,
+        metrics_store,
+        audit_sink,
+        metrics_store,
+        queue_degraded_threshold=settings.queue_backlog_degraded_threshold,
+        index_stale_after_seconds=settings.index_stale_after_seconds,
+    )
 
 _shutdown_hooks: list[Callable[[], Awaitable[None]]] = []
 if gel_store is not None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from builtins import list as builtins_list
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -236,6 +237,21 @@ class SQLiteRecordStore(AuditSink):
             rows = connection.execute(
                 f"SELECT * FROM audit_event {where} ORDER BY sequence ASC LIMIT ?",
                 (*parameters, limit),
+            ).fetchall()
+            return [_event_from_row(row) for row in rows]
+        finally:
+            connection.close()
+
+    async def list_since(
+        self, sequence: int, *, limit: int = 1000
+    ) -> builtins_list[AuditEvent]:
+        if sequence < 0 or not 1 <= limit <= 5000:
+            raise DomainValidationError("audit sequence and query limit are invalid")
+        connection = self.connect()
+        try:
+            rows = connection.execute(
+                "SELECT * FROM audit_event WHERE sequence > ? ORDER BY sequence ASC LIMIT ?",
+                (sequence, limit),
             ).fetchall()
             return [_event_from_row(row) for row in rows]
         finally:

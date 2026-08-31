@@ -1,5 +1,6 @@
 """Hybrid retrieval application service."""
 
+from time import monotonic
 from uuid import UUID
 
 from personlogy.application.audit import append_audit_event
@@ -38,6 +39,7 @@ class RetrievalService:
         normalized_query = query.strip()
         context = TraceContext.current_or_root().child()
         request_id = context.span_id
+        started_at = monotonic()
         metadata = {
             "project_id": str(project_id),
             "query_digest": digest_for(normalized_query),
@@ -71,7 +73,11 @@ class RetrievalService:
                 entity_id=request_id,
                 context=context,
                 reason_code="retrieval_failure",
-                metadata={**metadata, "error_digest": digest_for(str(error))},
+                metadata={
+                    **metadata,
+                    "duration_ms": round((monotonic() - started_at) * 1000, 2),
+                    "error_digest": digest_for(str(error)),
+                },
             )
             raise
         await append_audit_event(
@@ -81,7 +87,11 @@ class RetrievalService:
             entity_type="retrieval_request",
             entity_id=request_id,
             context=context,
-            metadata={**metadata, "result_count": len(hits)},
+            metadata={
+                **metadata,
+                "duration_ms": round((monotonic() - started_at) * 1000, 2),
+                "result_count": len(hits),
+            },
         )
         for hit in hits:
             await add_lineage_link(

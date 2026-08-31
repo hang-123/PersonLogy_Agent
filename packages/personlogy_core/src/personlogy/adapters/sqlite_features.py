@@ -7,6 +7,7 @@ import re
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from time import monotonic
 from uuid import UUID, uuid4
 
 from personlogy.application.audit import append_audit_event
@@ -122,6 +123,7 @@ class SQLiteRetrievalIndexer:
 
     async def rebuild_project(self, project_id: UUID, *, job_id: UUID | None = None) -> int:
         context = TraceContext.current_or_root().child()
+        started_at = monotonic()
         build_id = uuid4()
         entity_id = str(build_id)
         metadata = {"build_id": entity_id, "project_id": str(project_id)}
@@ -252,6 +254,7 @@ class SQLiteRetrievalIndexer:
                     **metadata,
                     "index_version": version,
                     "document_count": count,
+                    "duration_ms": round((monotonic() - started_at) * 1000, 2),
                 },
             )
             return count
@@ -270,6 +273,7 @@ class SQLiteRetrievalIndexer:
                 metadata={
                     **metadata,
                     "index_version": version or 0,
+                    "duration_ms": round((monotonic() - started_at) * 1000, 2),
                     "error_digest": digest_for(str(error)),
                 },
             )

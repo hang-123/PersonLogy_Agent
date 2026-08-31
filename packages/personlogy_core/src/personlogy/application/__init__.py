@@ -1,6 +1,13 @@
 """Application use cases and workflow orchestration."""
 
 from personlogy.application.lineage import LineageService, LineageTrace, add_lineage_link
+from personlogy.application.monitoring import (
+    MetricsProjector,
+    MetricsView,
+    MonitoringHealth,
+    MonitoringService,
+    ProjectionRun,
+)
 from personlogy.application.tool_gateway import (
     AuditedToolExecutor,
     AuditPolicyEngine,
@@ -18,6 +25,11 @@ __all__ = [
     "CallableAuditorProvider",
     "LineageService",
     "LineageTrace",
+    "MetricsProjector",
+    "MetricsView",
+    "MonitoringHealth",
+    "MonitoringService",
+    "ProjectionRun",
     "ToolDeniedError",
     "ToolGateway",
     "ToolIntent",
