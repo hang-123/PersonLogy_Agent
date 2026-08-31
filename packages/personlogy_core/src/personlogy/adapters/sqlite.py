@@ -496,6 +496,26 @@ class SQLiteSourceRepository:
             created_at=_required_datetime(row["created_at"]),
         )
 
+    async def get_version_in_project(
+        self, project_id: UUID, version_id: UUID
+    ) -> SourceVersion | None:
+        row = self._connection.execute(
+            """SELECT version.* FROM source_version AS version
+               JOIN source ON source.id = version.source_id
+               WHERE version.id = ? AND source.project_id = ?""",
+            (_id(version_id), _id(project_id)),
+        ).fetchone()
+        if row is None:
+            return None
+        return SourceVersion(
+            source_id=UUID(row["source_id"]),
+            version=row["version"],
+            content_hash=row["content_hash"],
+            object_key=row["object_key"],
+            id=UUID(row["id"]),
+            created_at=_required_datetime(row["created_at"]),
+        )
+
     async def get_pdf_version_by_hash(
         self, project_id: UUID, content_hash: str
     ) -> SourceVersion | None:

@@ -15,12 +15,14 @@ from personlogy.adapters.sqlite_features import (
 )
 from personlogy.adapters.sqlite_lineage import SQLiteLineageStore
 from personlogy.adapters.sqlite_metrics import SQLiteMetricsStore
+from personlogy.adapters.sqlite_replay import SQLiteReplayStore
 from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
 from personlogy.application.governance import GovernanceService
 from personlogy.application.ingestion import ConversationImportService, PdfImportService
 from personlogy.application.lineage import LineageService
 from personlogy.application.monitoring import MetricsProjector, MonitoringService
 from personlogy.application.orchestration import JobService, StageRunner
+from personlogy.application.replay import ReplayService
 from personlogy.application.retrieval import RetrievalService
 from personlogy.application.schema_management import SchemaChangeService
 from personlogy.ports.audit import AuditSink
@@ -129,6 +131,17 @@ retrieval_service = RetrievalService(
 lineage_service: LineageService | None = (
     LineageService(lineage_store) if lineage_store is not None else None
 )
+replay_store: SQLiteReplayStore | None = None
+replay_service: ReplayService | None = None
+if isinstance(store, SQLiteStore):
+    replay_store = SQLiteReplayStore(store.path)
+    replay_service = ReplayService(
+        uow_factory,
+        job_service,
+        replay_store,
+        audit_sink=audit_sink,
+        lineage_store=lineage_store,
+    )
 metrics_store: SQLiteMetricsStore | None = None
 monitoring_service: MonitoringService | None = None
 if isinstance(store, SQLiteStore) and audit_sink is not None:

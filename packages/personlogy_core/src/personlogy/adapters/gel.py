@@ -373,6 +373,32 @@ class GelSourceRepository:
             created_at=row.created_at,
         )
 
+    async def get_version_in_project(
+        self, project_id: UUID, version_id: UUID
+    ) -> SourceVersion | None:
+        row = await self._tx.query_single(
+            """
+            select SourceVersion {
+              id, version, content_hash, object_key, created_at, source: { id },
+            }
+            filter .id = <uuid>$version_id
+               and .source.project.id = <uuid>$project_id
+            limit 1
+            """,
+            version_id=version_id,
+            project_id=project_id,
+        )
+        if row is None:
+            return None
+        return SourceVersion(
+            source_id=row.source.id,
+            version=row.version,
+            content_hash=row.content_hash,
+            object_key=row.object_key,
+            id=row.id,
+            created_at=row.created_at,
+        )
+
     async def get_pdf_version_by_hash(
         self, project_id: UUID, content_hash: str
     ) -> SourceVersion | None:

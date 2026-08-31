@@ -8,6 +8,7 @@ from personlogy.application.monitoring import (
     MonitoringService,
     ProjectionRun,
 )
+from personlogy.application.replay import ReplayService
 from personlogy.application.tool_gateway import (
     AuditedToolExecutor,
     AuditPolicyEngine,
@@ -30,6 +31,7 @@ __all__ = [
     "MonitoringHealth",
     "MonitoringService",
     "ProjectionRun",
+    "ReplayService",
     "ToolDeniedError",
     "ToolGateway",
     "ToolIntent",

@@ -11,6 +11,7 @@ from app.runtime import (
     compilation_service,
     job_service,
     pdf_import_service,
+    replay_service,
     retrieval_indexer,
     stage_runner,
 )
@@ -60,6 +61,18 @@ async def run_worker() -> None:
                         job=job,
                         operation=partial(compilation_service.process_compile_job, job),
                     )
+                    replay_plan_id = job.payload.get("replay_plan_id")
+                    if replay_service is not None and isinstance(replay_plan_id, str):
+                        await replay_service.compare(
+                            UUID(replay_plan_id),
+                            replay_output={
+                                "node_count": result.node_count,
+                                "citation_count": result.citation_count,
+                                "claim_count": result.claim_count,
+                                "relation_count": result.relation_count,
+                                "governance_status": result.governance_status,
+                            },
+                        )
                     await job_service.report_progress(
                         job.id,
                         90,

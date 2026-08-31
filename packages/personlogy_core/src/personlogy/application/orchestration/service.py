@@ -210,7 +210,7 @@ class JobService:
                 reason_code=reason_code,
                 before_digest=self._digest_payload(before),
                 after_digest=self._digest_payload(after),
-                metadata=metadata or {},
+                metadata=self._audit_metadata(job, metadata),
             )
         )
 
@@ -232,6 +232,15 @@ class JobService:
             "stage": job.stage,
             "attempt": job.attempt,
         }
+
+    @staticmethod
+    def _audit_metadata(job: Job, metadata: dict[str, object] | None) -> dict[str, object]:
+        payload_metadata: dict[str, object] = {}
+        for key in ("replay_plan_id", "parent_job_id", "parent_trace_id", "replay_attempt"):
+            value = job.payload.get(key)
+            if isinstance(value, (str, int)) and not isinstance(value, bool):
+                payload_metadata[key] = value
+        return {**(metadata or {}), **payload_metadata}
 
     @staticmethod
     async def _required_job(result: Awaitable[Job | None]) -> Job:

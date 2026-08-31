@@ -158,6 +158,13 @@ class InMemorySourceRepository:
     async def get_version(self, version_id: UUID) -> SourceVersion | None:
         return self._store.versions.get(version_id)
 
+    async def get_version_in_project(
+        self, project_id: UUID, version_id: UUID
+    ) -> SourceVersion | None:
+        version = self._store.versions.get(version_id)
+        source = self._store.sources.get(version.source_id) if version is not None else None
+        return version if source is not None and source.project_id == project_id else None
+
     async def get_pdf_version_by_hash(
         self, project_id: UUID, content_hash: str
     ) -> SourceVersion | None:
