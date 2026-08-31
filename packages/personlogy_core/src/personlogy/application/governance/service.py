@@ -32,6 +32,10 @@ class GovernanceService:
         async with self._uow_factory() as uow:
             return await uow.governance.list_review_tasks(limit=limit)
 
+    async def get_review_task(self, task_id: UUID) -> ReviewTask | None:
+        async with self._uow_factory() as uow:
+            return await uow.governance.get_review_task(task_id)
+
     async def decide_review_task(
         self,
         task_id: UUID,

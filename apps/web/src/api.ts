@@ -13,6 +13,15 @@ import type {
   SourceDocument,
   SourceList,
 } from "./types";
+import type {
+  ConversationImportRequest,
+  ConversationImportResponse,
+  Job,
+  LineageTrace,
+  PdfImportResponse,
+  RetrievalSearchResponse,
+  ReviewTask,
+} from "./types";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/v1";
 
@@ -27,12 +36,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (!(init?.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(apiBaseUrl + path, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as ApiErrorPayload;
@@ -61,6 +71,71 @@ function queryString(values: Record<string, string | number | boolean | undefine
 
 export const api = {
   health: () => request<HealthResponse>("/health/live"),
+
+  uploadPdf: (payload: {
+    projectName: string;
+    projectSlug: string;
+    title: string;
+    file: File;
+  }) => {
+    const formData = new FormData();
+    formData.set("project_name", payload.projectName);
+    formData.set("project_slug", payload.projectSlug);
+    formData.set("title", payload.title);
+    formData.set("file", payload.file);
+    return request<PdfImportResponse>("/pdfs/upload", {
+      method: "POST",
+      body: formData,
+    });
+  },
+
+  importConversation: (payload: ConversationImportRequest) =>
+    request<ConversationImportResponse>("/conversations/import", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  listJobs: (limit = 100) => request<Job[]>("/jobs?limit=" + limit),
+
+  getJob: (jobId: string) => request<Job>("/jobs/" + encodeURIComponent(jobId)),
+
+  listReviewTasks: (limit = 100) => request<ReviewTask[]>("/review-tasks?limit=" + limit),
+
+  getReviewTask: (taskId: string) =>
+    request<ReviewTask>("/review-tasks/" + encodeURIComponent(taskId)),
+
+  decideReviewTask: (
+    taskId: string,
+    payload: {
+      decision: "approved" | "rejected" | "revised";
+      reviewer_id: string;
+      reason: string;
+      expected_version?: number;
+      changes?: Record<string, unknown>;
+    },
+  ) =>
+    request<ReviewTask>("/review-tasks/" + encodeURIComponent(taskId) + "/decision", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  searchRetrieval: (payload: { projectId: string; query: string; limit?: number; expandRelations?: boolean }) =>
+    request<RetrievalSearchResponse>(
+      "/retrieval/search" +
+        queryString({
+          project_id: payload.projectId,
+          q: payload.query,
+          limit: payload.limit ?? 20,
+          expand_relations: payload.expandRelations ?? false,
+        }),
+    ),
+
+  traceClaim: (payload: { projectId: string; claimId: string; limit?: number }) =>
+    request<LineageTrace>(
+      "/lineage/claims/" +
+        encodeURIComponent(payload.claimId) +
+        queryString({ project_id: payload.projectId, limit: payload.limit ?? 1000 }),
+    ),
 
   listSources: (query?: string) =>
     request<SourceList>("/sources" + queryString({ query, limit: 50 })),

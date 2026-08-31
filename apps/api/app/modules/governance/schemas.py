@@ -14,6 +14,8 @@ class ReviewTaskResponse(BaseModel):
     reviewer_id: str | None
     reason: str | None
     version: int
+    before: dict[str, object]
+    after: dict[str, object]
     created_at: datetime
     reviewed_at: datetime | None
 
