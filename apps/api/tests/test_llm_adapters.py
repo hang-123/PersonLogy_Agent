@@ -103,6 +103,8 @@ def test_openai_compiler_parses_bundle() -> None:
     assert bundle.relations[0].relation_type == "part_of"
     # candidates stay unreviewed; governance applies machine_checked later
     assert claim.status is VerificationStatus.CANDIDATE
+    # CompilationService persists this payload with json.dumps; UUIDs must be portable JSON.
+    json.dumps(bundle.okf, ensure_ascii=False)
 
 
 def test_openai_compiler_rejects_bad_output() -> None:

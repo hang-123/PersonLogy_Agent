@@ -403,8 +403,8 @@ def _parse_bundle(
         "relations": [
             {
                 "relation_type": relation.relation_type,
-                "source": relation.source_id,
-                "target": relation.target_id,
+                "source": str(relation.source_id),
+                "target": str(relation.target_id),
             }
             for relation in relations
         ],
