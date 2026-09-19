@@ -20,6 +20,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+
 from personlogy.adapters.gel import GelJobQueue, GelStore, GelUnitOfWorkFactory
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.pdf import PdfPlumberParser
@@ -62,6 +63,36 @@ pytestmark = pytest.mark.skipif(
 def _store() -> GelStore:
     assert GEL_DSN is not None
     return GelStore(GEL_DSN)
+
+
+def test_gel_job_project_filter_and_stale_recovery() -> None:
+    async def run() -> None:
+        store = _store()
+        try:
+            factory = GelUnitOfWorkFactory(store)
+            service = JobService(factory, GelJobQueue(store))
+            project_id = uuid4()
+            stale = Job(
+                "test",
+                f"recover-{uuid4()}",
+                {"project_id": str(project_id)},
+                max_attempts=1,
+                timeout_seconds=1,
+            ).start(datetime.now(UTC) - timedelta(minutes=1))
+            async with factory() as uow:
+                await uow.jobs.add(stale)
+                await uow.jobs.add(Job("test", f"other-{uuid4()}", {}))
+                await uow.commit()
+            jobs = await service.list(project_id=project_id, limit=1)
+            assert [job.id for job in jobs] == [stale.id]
+            await service.recover_stale_running()
+            recovered = await service.get(stale.id)
+            assert recovered is not None and recovered.status is JobStatus.FAILED
+            assert await service.recover_stale_running() == []
+        finally:
+            await store.aclose()
+
+    asyncio.run(run())
 
 
 def test_pdf_import_persists_blocks_on_gel(tmp_path: Path) -> None:
@@ -231,9 +262,7 @@ async def _test_governance_repository_roundtrip_on_gel() -> None:
             await uow.knowledge.add_citation(citation)
             claim = Claim(project.id, node.id, "治理声明", (citation,), confidence=0.8)
             await uow.knowledge.add_claim(claim)
-            relation = Relation(
-                project.id, "related_to", node.id, node.id, (citation.id,)
-            )
+            relation = Relation(project.id, "related_to", node.id, node.id, (citation.id,))
             await uow.knowledge.add_relation(relation)
             await uow.commit()
 
@@ -358,9 +387,7 @@ async def _test_knowledge_get_save_roundtrip_on_gel() -> None:
             await uow.knowledge.add_citation(citation)
             claim = Claim(project.id, node.id, "保存声明", (citation,))
             await uow.knowledge.add_claim(claim)
-            relation = Relation(
-                project.id, "related_to", node.id, node.id, (citation.id,)
-            )
+            relation = Relation(project.id, "related_to", node.id, node.id, (citation.id,))
             await uow.knowledge.add_relation(relation)
             await uow.commit()
 
@@ -420,15 +447,11 @@ async def _test_knowledge_get_save_roundtrip_on_gel() -> None:
             async with factory() as uow:
                 with pytest.raises(DomainValidationError):
                     if kind is CandidateKind.NODE:
-                        await uow.knowledge.save_node(
-                            KnowledgeNode(project.id, "concept", "ghost")
-                        )
+                        await uow.knowledge.save_node(KnowledgeNode(project.id, "concept", "ghost"))
                     elif kind is CandidateKind.CLAIM:
                         await uow.knowledge.save_claim(replace(claim, id=uuid4()))
                     else:
-                        await uow.knowledge.save_relation(
-                            replace(relation, id=uuid4())
-                        )
+                        await uow.knowledge.save_relation(replace(relation, id=uuid4()))
     finally:
         await store.aclose()
 
@@ -731,7 +754,6 @@ def _sample_pdf() -> bytes:
     for offset in offsets[1:]:
         data.extend(f"{offset:010d} 00000 n \n".encode())
     data.extend(
-        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-        f"startxref\n{xref}\n%%EOF\n".encode()
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
     )
     return bytes(data)

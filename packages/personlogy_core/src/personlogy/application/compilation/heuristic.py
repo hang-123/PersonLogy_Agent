@@ -171,7 +171,7 @@ def _claim_statement(content: str) -> str:
 
 
 def _quote(content: str) -> str:
-    return _truncate(" ".join(content.split()), 1000)
+    return content.strip()[:1000]
 
 
 def _truncate(value: str, limit: int) -> str:

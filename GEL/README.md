@@ -16,8 +16,8 @@ Schema 变更必须通过 Gel migration 生成、审阅和执行，不允许由�
   configure current database set allow_user_specified_id := true;
   ```
 
-- 连接使用 DSN 形式：`gel://user@host:port/database?tls_security=insecure`
-  （本地 dev 实例为自签名证书，需要 `tls_security=insecure`）。
+- 连接使用 DSN 形式：`gel://user@host:port/database`。默认进行 TLS 证书校验；本地自签名实例只有在明确传入
+  `-AllowInsecureLocal` 时才允许 insecure 模式，远程环境禁止关闭校验。
 
 ## 首次初始化（已执行，供其他设备复现）
 
@@ -40,15 +40,16 @@ gel query "configure current database set allow_user_specified_id := true" --dsn
 
 ```powershell
 $env:GEL_PASSWORD = "<实例密码>"            # 或 -Password 参数
-.\GEL\scripts\gel-migrate.ps1                # 仅应用现有迁移
+.\GEL\scripts\gel-migrate.ps1                # 仅应用现有迁移（默认校验证书）
+.\GEL\scripts\gel-migrate.ps1 -AllowInsecureLocal # 仅限本地自签名开发实例
 .\GEL\scripts\gel-migrate.ps1 -Create        # 应用 + 基于 dbschema 差异生成新迁移
 .\GEL\scripts\gel-migrate.ps1 -Create -Seed  # 应用 + 生成 + 执行 seed
 ```
 
 - 迁移文件**必须由 CLI 生成**；手写迁移名无法被 CLI 解析（见"已知坑"）。
 - `-Create` 在无 schema 差异时输出 "no schema changes" 并正常退出（CLI exit 4 已处理）。
-- 本机开发实例：容器 my-gel（`F:\middleware\docker-compose.yml`），DSN
-  `gel://edgedb:<密码>@localhost:5656/personlogy?tls_security=insecure`。
+- 密码通过 `--password-from-stdin` 传递，不会拼接到 DSN 或命令行参数中。
+- 本机开发实例：容器 my-gel，使用 `-AllowInsecureLocal` 连接自签名证书。
 
 ### 本机 Docker 实例（my-gel）说明
 

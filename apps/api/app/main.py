@@ -5,13 +5,13 @@ from uuid import uuid4
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from personlogy.shared.trace import TraceContext
 
 from app import __version__, runtime
 from app.api.errors import register_error_handlers
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
+from personlogy.shared.trace import TraceContext
 
 
 @asynccontextmanager
@@ -24,6 +24,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         storage_backend=settings.storage_backend,
         queue_backend=settings.queue_backend,
     )
+    recovered = await runtime.job_service.recover_stale_running()
+    if recovered:
+        structlog.get_logger().warning(
+            "stale_jobs_recovered", count=len(recovered), job_ids=[str(job.id) for job in recovered]
+        )
     yield
     await runtime.shutdown()
     structlog.get_logger().info("application_stopped")

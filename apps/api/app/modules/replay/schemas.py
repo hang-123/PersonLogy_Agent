@@ -1,9 +1,10 @@
 from datetime import datetime
 from uuid import UUID
 
+from pydantic import BaseModel, Field
+
 from personlogy.domain.job import JobStatus
 from personlogy.domain.replay import ReplayPlanStatus
-from pydantic import BaseModel, Field
 
 
 class ReplayVersionResponse(BaseModel):

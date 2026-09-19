@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.pdf import PdfPlumberParser
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory

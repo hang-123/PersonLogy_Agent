@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+
 from personlogy.adapters.sqlite_audit import SQLiteRecordStore
 from personlogy.domain.audit import AuditEvent
 from personlogy.shared.errors import DomainValidationError

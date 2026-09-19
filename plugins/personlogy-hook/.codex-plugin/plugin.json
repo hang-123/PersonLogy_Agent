@@ -1,0 +1,18 @@
+{
+  "name": "personlogy-hook",
+  "version": "0.1.0",
+  "description": "Capture personal signals from Codex prompts into a local durable SQLite outbox.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Personlogy Hook",
+    "shortDescription": "Capture personal signals into a local PersonLogy outbox.",
+    "longDescription": "PersonLogy Hook captures selected Codex user prompts, stores redacted evidence in SQLite, and retries delivery to a configured PersonLogy endpoint.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Help me inspect or configure the PersonLogy Hook outbox."
+  }
+}

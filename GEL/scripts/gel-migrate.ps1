@@ -4,7 +4,7 @@
 #   .\GEL\scripts\gel-migrate.ps1                 # apply existing migrations only
 #   .\GEL\scripts\gel-migrate.ps1 -Create          # apply + generate new migration from dbschema diff
 #   .\GEL\scripts\gel-migrate.ps1 -Create -Seed    # apply + generate + run seed
-#   .\GEL\scripts\gel-migrate.ps1 -Password xxxx   # pass password explicitly (default: $env:GEL_PASSWORD)
+#   .\GEL\scripts\gel-migrate.ps1 -Password xxxx   # pass password via stdin (default: $env:GEL_PASSWORD)
 #
 # Prerequisites:
 #   - Gel CLI on PATH or $env:GEL_CLI pointing to gel.exe (>= 7.x)
@@ -22,8 +22,8 @@ param(
     [switch]$Create,
     [switch]$Seed,
     [string]$Password = $env:GEL_PASSWORD,
-    [string]$Dsn = "gel://edgedb@localhost:5656/personlogy?tls_security=insecure",
-    [string]$User = "edgedb"
+    [string]$Dsn = "gel://edgedb@localhost:5656/personlogy",
+    [switch]$AllowInsecureLocal
 )
 
 $ErrorActionPreference = "Continue"
@@ -43,10 +43,13 @@ if (-not $cli) {
 }
 Write-Host "Gel CLI: $cli"
 
-# --- resolve DSN with password ---
-$dsn = $Dsn
+# --- resolve connection arguments without putting credentials in the DSN ---
+$connectionArgs = @("--dsn", $Dsn)
+if ($AllowInsecureLocal) {
+    $connectionArgs += @("--tls-security", "insecure")
+}
 if ($Password) {
-    $dsn = $dsn -replace "^gel://$User@", "gel://$User`:$Password@"
+    $connectionArgs += "--password-from-stdin"
 }
 if (-not $Password) {
     Write-Warning "No password provided (-Password or `$env:GEL_PASSWORD). Ignore if the instance has none."
@@ -65,7 +68,8 @@ function Invoke-GelMigrate {
     Write-Host "==> $Label"
     Push-Location $gelDir
     try {
-        & $cli migrate --dsn $dsn --tls-security insecure 2>$null
+        if ($Password) { $Password | & $cli migrate @connectionArgs 2>$null }
+        else { & $cli migrate @connectionArgs 2>$null }
         if ($LASTEXITCODE -ne 0) { throw "gel migrate failed: $Label (exit $LASTEXITCODE)" }
     } finally {
         Pop-Location
@@ -77,7 +81,8 @@ function Invoke-GelCreate {
     Write-Host "==> Generate new migration from dbschema diff"
     Push-Location $gelDir
     try {
-        & $cli migration create --dsn $dsn --tls-security insecure --non-interactive 2>$null
+        if ($Password) { $Password | & $cli migration create @connectionArgs --non-interactive 2>$null }
+        else { & $cli migration create @connectionArgs --non-interactive 2>$null }
         if ($LASTEXITCODE -eq 4) {
             Write-Host "  -> no schema changes; nothing to generate"
         } elseif ($LASTEXITCODE -ne 0) {
@@ -93,7 +98,8 @@ function Invoke-GelSeed {
     Write-Host "==> Run seed (RelationType initialization)"
     Push-Location $gelDir
     try {
-        & $cli query --dsn $dsn --tls-security insecure -f seed.edgeql 2>$null
+        if ($Password) { $Password | & $cli query @connectionArgs -f seed.edgeql 2>$null }
+        else { & $cli query @connectionArgs -f seed.edgeql 2>$null }
         if ($LASTEXITCODE -ne 0) { throw "gel seed failed (exit $LASTEXITCODE)" }
     } finally {
         Pop-Location
@@ -103,12 +109,22 @@ function Invoke-GelSeed {
 function Assert-GelConfig {
     Write-Host ""
     Write-Host "==> Check allow_user_specified_id"
-    $result = (& $cli query --dsn $dsn --tls-security insecure `
+    if ($Password) {
+        $result = ($Password | & $cli query @connectionArgs `
         "select cfg::Config { allow_user_specified_id }" 2>$null | Out-String)
+    } else {
+        $result = (& $cli query @connectionArgs `
+        "select cfg::Config { allow_user_specified_id }" 2>$null | Out-String)
+    }
     if ($result -notmatch "true") {
         Write-Host "  -> not enabled; attempting to enable (needs superuser, fall back to manual)"
-        & $cli query --dsn $dsn --tls-security insecure `
-            "configure current database set allow_user_specified_id := true" 2>$null | Out-Null
+        if ($Password) {
+            $Password | & $cli query @connectionArgs `
+                "configure current database set allow_user_specified_id := true" 2>$null | Out-Null
+        } else {
+            & $cli query @connectionArgs `
+                "configure current database set allow_user_specified_id := true" 2>$null | Out-Null
+        }
     } else {
         Write-Host "  -> enabled"
     }
@@ -127,7 +143,8 @@ Assert-GelConfig
 
 Write-Host ""
 Write-Host "Applied migrations:"
-& $cli query --dsn $dsn --tls-security insecure "select schema::Migration.name" 2>$null
+if ($Password) { $Password | & $cli query @connectionArgs "select schema::Migration.name" 2>$null }
+else { & $cli query @connectionArgs "select schema::Migration.name" 2>$null }
 
 Write-Host ""
 Write-Host "Tip: if the CLI reports 'cannot parse migration name', a hand-written migration"

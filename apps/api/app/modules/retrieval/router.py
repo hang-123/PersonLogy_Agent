@@ -1,7 +1,6 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, status
-from personlogy.ports.retrieval import RetrievalHit
 
 from app.modules.retrieval.schemas import (
     EvidenceResponse,
@@ -12,7 +11,9 @@ from app.modules.retrieval.schemas import (
     RetrievalIndexResponse,
     RetrievalSearchResponse,
 )
-from app.runtime import job_service, retrieval_service
+from app.runtime import job_service, retrieval_indexer, retrieval_service
+from personlogy.ports.retrieval import RetrievalHit
+from personlogy.shared.errors import DomainValidationError
 
 router = APIRouter(prefix="/retrieval", tags=["retrieval"])
 
@@ -145,6 +146,8 @@ async def rebuild_index(
     project_id: UUID,
     x_idempotency_key: str | None = Header(default=None, max_length=255),
 ) -> RetrievalIndexResponse:
+    if retrieval_indexer is None:
+        raise DomainValidationError("retrieval indexing is unavailable for the configured backend")
     job = await job_service.submit(
         kind="retrieval.index",
         idempotency_key=x_idempotency_key or f"retrieval-index:{project_id}",

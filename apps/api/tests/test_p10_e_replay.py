@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+
 from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
 from personlogy.adapters.sqlite_audit import SQLiteRecordStore
 from personlogy.adapters.sqlite_lineage import SQLiteLineageStore

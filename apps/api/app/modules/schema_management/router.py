@@ -1,8 +1,6 @@
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
-from personlogy.application.schema_management import SchemaChangeService
-from personlogy.domain.schema import SchemaProposal
 
 from app.modules.schema_management.schemas import (
     SchemaApprovalRequest,
@@ -11,6 +9,8 @@ from app.modules.schema_management.schemas import (
     SchemaProposalResponse,
 )
 from app.runtime import schema_service
+from personlogy.application.schema_management import SchemaChangeService
+from personlogy.domain.schema import SchemaProposal
 
 router = APIRouter(prefix="/schema-proposals", tags=["schema-management"])
 

@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "rule_version": "personlogy-default-2026-09-13",
+  "minimum_prompt_length": 2,
+  "rules": [
+    {
+      "id": "personal_goal_or_plan",
+      "category": "goal_or_plan",
+      "confidence": "high",
+      "patterns": [
+        "我.*(目标|计划|准备|打算|决定|优先|要做|想做)",
+        "(目标|计划|准备|打算|决定|优先).*(我|自己)",
+        "\\b(I|my|me)\\b.*\\b(plan|goal|intend|decided|priorit)\\w*\\b"
+      ]
+    },
+    {
+      "id": "future_idea_or_intention",
+      "category": "future_idea",
+      "confidence": "medium",
+      "patterns": [
+        "我.*(可能|也许|考虑|希望|想|以后|未来|明年|将来)",
+        "(可能|也许|考虑|希望|以后|未来|明年|将来).*(我|自己)",
+        "\\b(I|my|me)\\b.*\\b(might|maybe|consider|hope|want|future|next year)\\b"
+      ]
+    },
+    {
+      "id": "personal_value_or_principle",
+      "category": "value_or_principle",
+      "confidence": "high",
+      "patterns": [
+        "我(认为|觉得|相信|看重|坚持|在意|不能接受|不喜欢)",
+        "(对我来说|我的原则|我的价值观|我看重的是|我在意的是)",
+        "\\b(I|my)\\b.*\\b(believe|value|principle|care about|cannot accept|prefer)\\b"
+      ]
+    },
+    {
+      "id": "personal_preference_or_boundary",
+      "category": "preference_or_boundary",
+      "confidence": "high",
+      "patterns": [
+        "我(喜欢|偏好|习惯|倾向于|不喜欢|不希望|希望你|要求你)",
+        "(我的偏好|我的习惯|我的边界|我不接受|我希望你)",
+        "\\b(I|my|me)\\b.*\\b(prefer|like|dislike|habit|boundary|want you to)\\b"
+      ]
+    },
+    {
+      "id": "personal_decision_or_tradeoff",
+      "category": "decision",
+      "confidence": "high",
+      "patterns": [
+        "我(决定|选择|放弃|改成|改为|暂时不|先.*再)",
+        "(我的决定|这个取舍|我选择了|我放弃了)",
+        "\\b(I|we)\\b.*\\b(decided|choose|chose|trade.?off|instead)\\b"
+      ]
+    },
+    {
+      "id": "experience_skill_or_learning",
+      "category": "experience_or_skill",
+      "confidence": "medium",
+      "patterns": [
+        "我(做过|经历过|擅长|正在学习|学会了|掌握了|想学习)",
+        "(我的经历|我的技能|我的经验|我学到)",
+        "\\b(I|my)\\b.*\\b(experience|skill|learned|learning|know how)\\b"
+      ]
+    },
+    {
+      "id": "work_style_or_agent_preference",
+      "category": "work_style_or_agent_preference",
+      "confidence": "medium",
+      "patterns": [
+        "我希望你(以后|接下来|始终|默认)",
+        "和我合作时|协作时|工作方式|沟通方式|回答方式",
+        "\\b(I|my)\\b.*\\b(work style|communication|when we work|respond)\\b"
+      ]
+    },
+    {
+      "id": "reflection_or_change",
+      "category": "reflection",
+      "confidence": "medium",
+      "patterns": [
+        "我发现自己|我意识到|我改变了|我后来觉得|我重新认识",
+        "(观点变化|复盘一下我|我现在不再|我以前认为)",
+        "\\b(I|my)\\b.*\\b(realized|changed my mind|reflection|used to think)\\b"
+      ]
+    }
+  ],
+  "redactions": [
+    {
+      "name": "bearer_token",
+      "pattern": "(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+",
+      "replacement": "$1[REDACTED]"
+    },
+    {
+      "name": "api_key_prefix",
+      "pattern": "(?i)\\b(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{8,}|AIza[A-Za-z0-9_-]{8,})\\b",
+      "replacement": "[REDACTED]"
+    },
+    {
+      "name": "secret_assignment",
+      "pattern": "(?i)(api[_-]?key|token|password|secret)\\s*[:=]\\s*[^\\s,;]+",
+      "replacement": "$1=[REDACTED]"
+    }
+  ]
+}

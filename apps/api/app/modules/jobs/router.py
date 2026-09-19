@@ -1,11 +1,11 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Header, status
-from personlogy.domain.job import Job
 
 from app.application.errors import ResourceNotFoundError
 from app.modules.jobs.schemas import JobCreateRequest, JobResponse
 from app.runtime import job_service
+from personlogy.domain.job import Job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -43,8 +43,11 @@ async def create_job(
 
 
 @router.get("", response_model=list[JobResponse])
-async def list_jobs(limit: int = 100) -> list[JobResponse]:
-    return [to_response(job) for job in await job_service.list(limit=min(limit, 100))]
+async def list_jobs(limit: int = 100, project_id: UUID | None = None) -> list[JobResponse]:
+    return [
+        to_response(job)
+        for job in await job_service.list(limit=min(limit, 100), project_id=project_id)
+    ]
 
 
 @router.get("/{job_id}", response_model=JobResponse)

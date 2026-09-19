@@ -2,6 +2,7 @@ import asyncio
 from uuid import uuid4
 
 import pytest
+
 from personlogy.adapters.memory import InMemoryStore, InMemoryUnitOfWorkFactory
 from personlogy.application.source_read import SourceReadService
 from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode

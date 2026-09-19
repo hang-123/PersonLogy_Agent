@@ -2,10 +2,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from personlogy.domain.governance.models import CandidateKind, ReviewTask, ReviewTaskStatus
 
 from app.main import create_app
 from app.modules.governance import router as governance_router
+from personlogy.domain.governance.models import CandidateKind, ReviewTask, ReviewTaskStatus
 
 
 def test_get_review_task_returns_candidate_snapshot(monkeypatch) -> None:  # type: ignore[no-untyped-def]

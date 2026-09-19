@@ -1,6 +1,7 @@
+import builtins
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from uuid import UUID
 
@@ -70,9 +71,43 @@ class JobService:
         async with self._uow_factory() as uow:
             return await uow.jobs.get(job_id)
 
-    async def list(self, *, limit: int = 100) -> list[Job]:
+    async def list(self, *, limit: int = 100, project_id: UUID | None = None) -> list[Job]:
         async with self._uow_factory() as uow:
-            return await uow.jobs.list(limit=limit)
+            return await uow.jobs.list(limit=limit, project_id=project_id)
+
+    async def recover_stale_running(self, *, now: datetime | None = None) -> builtins.list[Job]:
+        """Move timed-out running jobs into the normal retry/failure state.
+
+        A worker process can disappear after claiming a job. Recovery is run at
+        process startup and is idempotent because only RUNNING jobs are eligible.
+        """
+        timestamp = now or datetime.now(UTC)
+        recovered: builtins.list[Job] = []
+        async with self._uow_factory() as uow:
+            jobs = await uow.jobs.list(limit=None, status=JobStatus.RUNNING.value)
+            for job in jobs:
+                if not job.is_timed_out(timestamp):
+                    continue
+                updated = job.fail(
+                    "job execution timed out",
+                    retryable=True,
+                    now=timestamp,
+                )
+                await uow.jobs.save(updated)
+                recovered.append(updated)
+            if recovered:
+                await uow.commit()
+        for job in recovered:
+            if job.status is JobStatus.RETRYING:
+                await self._queue.enqueue(job.id)
+            await self._audit_job(
+                "job.recovered_timeout",
+                job,
+                status=job.status.value,
+                reason_code="execution_timeout",
+                metadata={"kind": job.kind, "attempt": job.attempt},
+            )
+        return recovered
 
     async def start_next(self, *, timeout_seconds: float | None = None) -> Job | None:
         job_id = await self._queue.dequeue(timeout_seconds=timeout_seconds)

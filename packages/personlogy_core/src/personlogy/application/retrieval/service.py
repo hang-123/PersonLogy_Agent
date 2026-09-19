@@ -9,7 +9,7 @@ from personlogy.application.lineage import add_lineage_link
 from personlogy.domain.audit import digest_for
 from personlogy.ports.audit import AuditSink
 from personlogy.ports.lineage import LineageStore
-from personlogy.ports.retrieval import RetrievalHit, RetrievalReader
+from personlogy.ports.retrieval import Reranker, RetrievalHit, RetrievalReader
 from personlogy.shared.errors import DomainValidationError
 from personlogy.shared.trace import TraceContext
 
@@ -29,10 +29,12 @@ class RetrievalService:
         reader: RetrievalReader,
         audit_sink: AuditSink | None = None,
         lineage_store: LineageStore | None = None,
+        reranker: Reranker | None = None,
     ) -> None:
         self._reader = reader
         self._audit_sink = audit_sink
         self._lineage_store = lineage_store
+        self._reranker = reranker
 
     async def search(
         self,
@@ -74,6 +76,10 @@ class RetrievalService:
                     limit=limit,
                     expand_relations=expand_relations,
                 )
+                if self._reranker is not None and hits:
+                    hits = await self._reranker.rerank(
+                        query=normalized_query, hits=hits, limit=limit
+                    )
         except Exception as error:
             await append_audit_event(
                 self._audit_sink,

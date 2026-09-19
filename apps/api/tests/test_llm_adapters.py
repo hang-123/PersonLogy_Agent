@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+
 from personlogy.adapters.llm_openai import (
     OpenAICompatCompiler,
     OpenAICompatEmbeddingProvider,
@@ -105,6 +106,102 @@ def test_openai_compiler_parses_bundle() -> None:
     assert claim.status is VerificationStatus.CANDIDATE
     # CompilationService persists this payload with json.dumps; UUIDs must be portable JSON.
     json.dumps(bundle.okf, ensure_ascii=False)
+    assert bundle.okf["claims"][0]["id"] == str(claim.id)
+    assert bundle.okf["claims"][0]["subject_id"] == str(claim.subject_id)
+    assert bundle.okf["claims"][0]["citation_ids"] == [str(claim.citations[0].id)]
+    assert bundle.okf["relations"][0]["citation_ids"]
+
+
+def test_openai_compiler_rejects_unmatched_quotes_and_keeps_relation_evidence() -> None:
+    payload = _compile_payload()
+    payload["claims"] = [
+        {
+            "statement": "无效引用的断言",
+            "subject_title": "量子计算",
+            "quote": "这段文字不在任何来源中",
+        }
+    ]
+    payload["relations"] = [
+        {
+            "relation_type": "part_of",
+            "source_title": "量子比特",
+            "target_title": "量子计算",
+            "quote": "量子比特是量子计算的基本单位。",
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(payload, ensure_ascii=False)}}]},
+        )
+
+    compiler = OpenAICompatCompiler(
+        base_url=BASE,
+        api_key="test-key",
+        model="test-model",
+        transport=httpx.MockTransport(handler),
+    )
+    bundle = compiler.compile(project_id=PROJECT_ID, blocks=_blocks())
+
+    assert bundle.claims == ()
+    assert len(bundle.relations) == 1
+    assert len(bundle.citations) == 1
+    assert bundle.relations[0].citation_ids == (bundle.citations[0].id,)
+    assert bundle.citations[0].metadata["quote_start"] == 0
+
+
+def test_openai_compiler_normalizes_invalid_json_to_domain_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": "not-json"}}]})
+
+    compiler = OpenAICompatCompiler(
+        base_url=BASE,
+        api_key="test-key",
+        model="test-model",
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(DomainValidationError, match="valid JSON"):
+        compiler.compile(project_id=PROJECT_ID, blocks=_blocks())
+
+
+def test_embedding_and_rerank_malformed_entries_raise_domain_error() -> None:
+    async def run() -> None:
+        def embedding_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"data": [{"embedding": ["bad"]}]})
+
+        provider = OpenAICompatEmbeddingProvider(
+            base_url=BASE,
+            api_key="test-key",
+            model="embed-model",
+            transport=httpx.MockTransport(embedding_handler),
+        )
+        with pytest.raises(DomainValidationError, match="embedding"):
+            await provider.embed(["a"])
+
+        def rerank_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"results": [{"index": "bad"}]})
+
+        reranker = OpenAICompatReranker(
+            base_url=BASE,
+            api_key="test-key",
+            model="rerank-model",
+            transport=httpx.MockTransport(rerank_handler),
+        )
+        hit = RetrievalHit(
+            claim_id=uuid4(),
+            project_id=PROJECT_ID,
+            statement="结果",
+            subject_id=uuid4(),
+            subject_title="结果",
+            score=0.1,
+            evidence=(),
+            relations=(),
+        )
+        with pytest.raises(DomainValidationError, match="rerank"):
+            await reranker.rerank(query="q", hits=(hit,))
+
+    asyncio.run(run())
 
 
 def test_openai_compiler_rejects_bad_output() -> None:
@@ -189,9 +286,7 @@ def test_openai_reranker_reorders_hits() -> None:
 
 def test_reranker_returns_empty_for_no_hits() -> None:
     async def run() -> None:
-        reranker = OpenAICompatReranker(
-            base_url=BASE, api_key="test-key", model="rerank-model"
-        )
+        reranker = OpenAICompatReranker(base_url=BASE, api_key="test-key", model="rerank-model")
         assert await reranker.rerank(query="q", hits=()) == ()
 
     asyncio.run(run())

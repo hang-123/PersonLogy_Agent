@@ -336,8 +336,7 @@ def _ensure_metadata_columns(connection: sqlite3.Connection) -> None:
     """Upgrade databases created before P5 metadata was introduced."""
     for table in ("citation", "claim", "relation"):
         columns = {
-            row["name"]
-            for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+            row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
         }
         if "metadata" not in columns:
             connection.execute(
@@ -352,9 +351,7 @@ def _ensure_metadata_columns(connection: sqlite3.Connection) -> None:
 
 def _ensure_job_trace_columns(connection: sqlite3.Connection) -> None:
     """Upgrade databases created before P10 trace context persistence."""
-    columns = {
-        row["name"] for row in connection.execute("PRAGMA table_info(job)").fetchall()
-    }
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(job)").fetchall()}
     if "trace_id" not in columns:
         connection.execute("ALTER TABLE job ADD COLUMN trace_id TEXT NOT NULL DEFAULT ''")
     if "request_id" not in columns:
@@ -406,13 +403,13 @@ class SQLiteSourceRepository:
             raise DomainValidationError("project slug already exists") from error
 
     async def get_project_by_slug(self, slug: str) -> Project | None:
-        row = self._connection.execute(
-            "SELECT * FROM project WHERE slug = ?", (slug,)
-        ).fetchone()
+        row = self._connection.execute("SELECT * FROM project WHERE slug = ?", (slug,)).fetchone()
         if row is None:
             return None
         return Project(
-            name=row["name"], slug=row["slug"], id=UUID(row["id"]),
+            name=row["name"],
+            slug=row["slug"],
+            id=UUID(row["id"]),
             created_at=_required_datetime(row["created_at"]),
         )
 
@@ -432,9 +429,7 @@ class SQLiteSourceRepository:
         except sqlite3.IntegrityError as error:
             raise DomainValidationError("source project does not exist") from error
 
-    async def get_source(
-        self, project_id: UUID, kind: SourceKind, title: str
-    ) -> Source | None:
+    async def get_source(self, project_id: UUID, kind: SourceKind, title: str) -> Source | None:
         row = self._connection.execute(
             """SELECT * FROM source
                WHERE project_id = ? AND kind = ? AND title = ?
@@ -458,9 +453,12 @@ class SQLiteSourceRepository:
                    (id, project_id, source_id, external_id, title, metadata, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    _id(conversation.id), _id(conversation.project_id),
-                    _id(conversation.source_id), conversation.external_id,
-                    conversation.title, _json(conversation.metadata),
+                    _id(conversation.id),
+                    _id(conversation.project_id),
+                    _id(conversation.source_id),
+                    conversation.external_id,
+                    conversation.title,
+                    _json(conversation.metadata),
                     _timestamp(conversation.created_at),
                 ),
             )
@@ -469,9 +467,7 @@ class SQLiteSourceRepository:
                 "conversation project/source does not exist or id already exists"
             ) from error
 
-    async def get_conversation(
-        self, project_id: UUID, external_id: str
-    ) -> Conversation | None:
+    async def get_conversation(self, project_id: UUID, external_id: str) -> Conversation | None:
         row = self._connection.execute(
             """SELECT * FROM conversation
                WHERE project_id = ? AND external_id = ?""",
@@ -480,9 +476,12 @@ class SQLiteSourceRepository:
         if row is None:
             return None
         return Conversation(
-            project_id=UUID(row["project_id"]), source_id=UUID(row["source_id"]),
-            external_id=row["external_id"], title=row["title"],
-            metadata=_mapping(row["metadata"]), id=UUID(row["id"]),
+            project_id=UUID(row["project_id"]),
+            source_id=UUID(row["source_id"]),
+            external_id=row["external_id"],
+            title=row["title"],
+            metadata=_mapping(row["metadata"]),
+            id=UUID(row["id"]),
             created_at=_required_datetime(row["created_at"]),
         )
 
@@ -494,9 +493,15 @@ class SQLiteSourceRepository:
                     content_hash, created_at, parent_external_id, attachments)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    _id(message.id), _id(message.conversation_id), message.external_id,
-                    message.role, message.content, message.ordinal, message.content_hash,
-                    _timestamp(message.created_at), message.parent_external_id,
+                    _id(message.id),
+                    _id(message.conversation_id),
+                    message.external_id,
+                    message.role,
+                    message.content,
+                    message.ordinal,
+                    message.content_hash,
+                    _timestamp(message.created_at),
+                    message.parent_external_id,
                     _json_value(list(message.attachments)),
                 ),
             )
@@ -516,11 +521,16 @@ class SQLiteSourceRepository:
         if row is None:
             return None
         return ConversationMessage(
-            conversation_id=UUID(row["conversation_id"]), external_id=row["external_id"],
-            role=row["role"], content=row["content"], ordinal=row["ordinal"],
-            content_hash=row["content_hash"], created_at=_required_datetime(row["created_at"]),
+            conversation_id=UUID(row["conversation_id"]),
+            external_id=row["external_id"],
+            role=row["role"],
+            content=row["content"],
+            ordinal=row["ordinal"],
+            content_hash=row["content_hash"],
+            created_at=_required_datetime(row["created_at"]),
             parent_external_id=row["parent_external_id"],
-            attachments=_mappings(row["attachments"]), id=UUID(row["id"]),
+            attachments=_mappings(row["attachments"]),
+            id=UUID(row["id"]),
         )
 
     async def add_version(self, version: SourceVersion) -> None:
@@ -714,8 +724,11 @@ class SQLiteKnowledgeRepository:
                 "INSERT INTO citation (id, content_block_id, quote, locator, metadata) "
                 "VALUES (?, ?, ?, ?, ?)",
                 (
-                    _id(citation.id), _id(citation.content_block_id), citation.quote,
-                    _json(citation.locator), _json(citation.metadata),
+                    _id(citation.id),
+                    _id(citation.content_block_id),
+                    citation.quote,
+                    _json(citation.locator),
+                    _json(citation.metadata),
                 ),
             )
         except sqlite3.IntegrityError as error:
@@ -1013,10 +1026,21 @@ class SQLiteGovernanceRepository:
         if cursor.rowcount != 1:
             raise DomainValidationError("review task does not exist")
 
-    async def list_review_tasks(self, *, limit: int = 100) -> list[ReviewTask]:
-        rows = self._connection.execute(
-            "SELECT * FROM review_task ORDER BY created_at DESC LIMIT ?", (limit,)
-        ).fetchall()
+    async def list_review_tasks(
+        self, *, limit: int = 100, project_id: UUID | None = None
+    ) -> list[ReviewTask]:
+        if project_id is None:
+            rows = self._connection.execute(
+                "SELECT * FROM review_task ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        else:
+            rows = self._connection.execute(
+                """SELECT review_task.* FROM review_task
+                   JOIN governance_run ON governance_run.id = review_task.run_id
+                   WHERE governance_run.project_id = ?
+                   ORDER BY review_task.created_at DESC LIMIT ?""",
+                (_id(project_id), limit),
+            ).fetchall()
         return [_review_task_from_row(row) for row in rows]
 
 
@@ -1238,9 +1262,25 @@ class SQLiteJobRepository:
         ).fetchone()
         return self._from_row(row) if row is not None else None
 
-    async def list(self, *, limit: int = 100) -> list[Job]:
+    async def list(
+        self,
+        *,
+        limit: int | None = 100,
+        project_id: UUID | None = None,
+        status: str | None = None,
+    ) -> list[Job]:
         rows = self._connection.execute(
-            "SELECT * FROM job ORDER BY created_at DESC LIMIT ?", (limit,)
+            """SELECT * FROM job
+               WHERE (? IS NULL OR json_extract(payload, '$.project_id') = ?)
+                 AND (? IS NULL OR status = ?)
+               ORDER BY created_at DESC LIMIT ?""",
+            (
+                str(project_id) if project_id else None,
+                str(project_id),
+                status,
+                status,
+                limit if limit is not None else -1,
+            ),
         ).fetchall()
         return [self._from_row(row) for row in rows]
 

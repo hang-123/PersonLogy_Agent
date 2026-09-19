@@ -105,14 +105,23 @@ def _completion_request(
             timeout=timeout,
         )
     response.raise_for_status()
-    data = cast(dict[str, Any], response.json())
+    try:
+        data = cast(dict[str, Any], response.json())
+    except ValueError as error:
+        raise DomainValidationError("LLM completion response is not valid JSON") from error
     try:
         content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as error:
         raise DomainValidationError(
             "LLM completion response missing choices[0].message.content"
         ) from error
-    parsed = json.loads(content) if isinstance(content, str) else content
+    if isinstance(content, str):
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as error:
+            raise DomainValidationError("LLM compilation output is not valid JSON") from error
+    else:
+        parsed = content
     if not isinstance(parsed, dict):
         raise DomainValidationError("LLM compilation output is not a JSON object")
     return cast(dict[str, object], parsed)
@@ -144,9 +153,7 @@ class OpenAICompatCompiler:
     prompt_version = "p5-llm-openai-v1"
     model_name: str = "openai-compatible"
 
-    def compile(
-        self, *, project_id: UUID, blocks: tuple[ContentBlock, ...]
-    ) -> CompilationBundle:
+    def compile(self, *, project_id: UUID, blocks: tuple[ContentBlock, ...]) -> CompilationBundle:
         block_texts = "\n\n".join(
             f"[块 {block.ordinal} | 页码 {_page(block.locator)}]\n{block.content}"
             for block in blocks
@@ -208,20 +215,31 @@ class OpenAICompatEmbeddingProvider:
                 json={"model": self._model, "input": list(texts)},
             )
         response.raise_for_status()
-        data = cast(dict[str, Any], response.json())
+        try:
+            data = cast(dict[str, Any], response.json())
+        except ValueError as error:
+            raise DomainValidationError("embedding response is not valid JSON") from error
         items = data.get("data")
         if not isinstance(items, list) or not items:
             raise DomainValidationError("embedding response missing data[]")
         vectors: list[EmbeddingVector] = []
         for item in items:
+            if not isinstance(item, dict):
+                raise DomainValidationError("embedding response entry must be an object")
             values = item.get("embedding")
             if not isinstance(values, list) or not values:
                 raise DomainValidationError("embedding response entry missing embedding[]")
+            try:
+                converted = tuple(float(value) for value in values)
+            except (TypeError, ValueError) as error:
+                raise DomainValidationError(
+                    "embedding response contains a non-numeric value"
+                ) from error
             vectors.append(
                 EmbeddingVector(
                     model_name=self._model,
                     model_version=self.model_version,
-                    values=tuple(float(value) for value in values),
+                    values=converted,
                 )
             )
         return tuple(vectors)
@@ -275,15 +293,20 @@ class OpenAICompatReranker:
                 json={"model": self._model, "query": query, "documents": documents},
             )
         response.raise_for_status()
-        data = cast(dict[str, Any], response.json())
+        try:
+            data = cast(dict[str, Any], response.json())
+        except ValueError as error:
+            raise DomainValidationError("rerank response is not valid JSON") from error
         results = data.get("results")
         if not isinstance(results, list):
             raise DomainValidationError("rerank response missing results[]")
         ordered: list[RetrievalHit] = []
         for result in results:
+            if not isinstance(result, dict):
+                raise DomainValidationError("rerank response entry must be an object")
             index = result.get("index")
             if not isinstance(index, int) or not 0 <= index < len(hits):
-                continue
+                raise DomainValidationError("rerank response entry has an invalid index")
             ordered.append(hits[index])
         return tuple(ordered[:limit])
 
@@ -332,14 +355,20 @@ def _parse_bundle(
         subject_title = str(item.get("subject_title", "")).strip()
         quote = str(item.get("quote", "")).strip()
         subject = title_to_node.get(subject_title)
-        block = _find_block(blocks, quote)
-        if not statement or subject is None or block is None:
+        match = _find_block(blocks, quote)
+        if not statement or subject is None or match is None:
             continue
+        block, quote_start, quote_end = match
         citation = Citation(
             content_block_id=block.id,
-            quote=quote[:500],
+            quote=quote,
             locator=dict(block.locator),
-            metadata={"extraction": "llm", "model": model},
+            metadata={
+                "extraction": "llm",
+                "model": model,
+                "quote_start": quote_start,
+                "quote_end": quote_end,
+            },
         )
         citations.append(citation)
         claims.append(
@@ -368,43 +397,94 @@ def _parse_bundle(
             quote = str(item.get("quote", "")).strip()
             source = title_to_node.get(source_title)
             target = title_to_node.get(target_title)
-            block = _find_block(blocks, quote)
+            match = _find_block(blocks, quote)
             if (
                 relation_type not in _INITIAL_RELATION_TYPES
                 or source is None
                 or target is None
-                or block is None
+                or match is None
             ):
                 continue
+            block, quote_start, quote_end = match
+            citation = Citation(
+                content_block_id=block.id,
+                quote=quote,
+                locator=dict(block.locator),
+                metadata={
+                    "extraction": "llm",
+                    "model": model,
+                    "quote_start": quote_start,
+                    "quote_end": quote_end,
+                    "evidence_for": "relation",
+                },
+            )
+            citations.append(citation)
             relations.append(
                 Relation(
                     project_id=project_id,
                     relation_type=relation_type,
                     source_id=source.id,
                     target_id=target.id,
-                    citation_ids=(_citation_for(block, citations).id,),
+                    citation_ids=(citation.id,),
                     properties={"extraction": "llm", "model": model},
                     confidence=_optional_confidence(item.get("confidence")),
                 )
             )
 
+    generated_at = datetime.now(UTC)
     okf: dict[str, object] = {
         "okf_version": "0.2",
+        "generated_at": generated_at.isoformat(),
         "provenance": {
             "model": model,
+            "model_name": model,
+            "prompt_version": "p5-llm-openai-v1",
             "extraction": "llm",
             "generated_at": datetime.now(UTC).isoformat(),
         },
-        "nodes": [{"title": node.title, "node_type": node.node_type} for node in nodes],
+        "bundle_type": "knowledge_candidates",
+        "project_id": str(project_id),
+        "source_version_id": str(blocks[0].source_version_id) if blocks else None,
+        "concepts": [
+            {
+                "id": str(node.id),
+                "type": node.node_type,
+                "title": node.title,
+                "properties": node.properties,
+                "status": node.status.value,
+            }
+            for node in nodes
+        ],
+        "citations": [
+            {
+                "id": str(citation.id),
+                "content_block_id": str(citation.content_block_id),
+                "quote": citation.quote,
+                "locator": citation.locator,
+                "metadata": citation.metadata,
+            }
+            for citation in citations
+        ],
         "claims": [
-            {"statement": claim.statement, "subject": claim.statement, "quote": claim.citations[0].quote}
+            {
+                "id": str(claim.id),
+                "subject_id": str(claim.subject_id),
+                "statement": claim.statement,
+                "confidence": claim.confidence,
+                "status": claim.status.value,
+                "citation_ids": [str(item.id) for item in claim.citations],
+            }
             for claim in claims
         ],
         "relations": [
             {
                 "relation_type": relation.relation_type,
-                "source": str(relation.source_id),
-                "target": str(relation.target_id),
+                "id": str(relation.id),
+                "source_id": str(relation.source_id),
+                "target_id": str(relation.target_id),
+                "confidence": relation.confidence,
+                "citation_ids": [str(item) for item in relation.citation_ids],
+                "properties": relation.properties,
             }
             for relation in relations
         ],
@@ -418,25 +498,22 @@ def _parse_bundle(
         okf=okf,
         prompt_version="p5-llm-openai-v1",
         model_name=model,
-        generated_at=datetime.now(UTC),
+        generated_at=generated_at,
     )
 
 
-def _find_block(blocks: tuple[ContentBlock, ...], quote: str) -> ContentBlock | None:
-    """Find the block containing the quote (substring match, then first block)."""
-    cleaned = quote.strip().lower()
-    if cleaned:
-        for block in blocks:
-            if cleaned in block.content.lower():
-                return block
-    return blocks[0] if blocks else None
-
-
-def _citation_for(block: ContentBlock, citations: list[Citation]) -> Citation:
-    for citation in citations:
-        if citation.content_block_id == block.id:
-            return citation
-    raise DomainValidationError("relation quote has no matching citation")
+def _find_block(
+    blocks: tuple[ContentBlock, ...], quote: str
+) -> tuple[ContentBlock, int, int] | None:
+    """Find the exact source block and offsets for a non-empty quote."""
+    cleaned = quote.strip()
+    if not cleaned:
+        return None
+    for block in blocks:
+        start = block.content.find(cleaned)
+        if start >= 0:
+            return block, start, start + len(cleaned)
+    return None
 
 
 def _optional_confidence(value: object) -> float | None:

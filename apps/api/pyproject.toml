@@ -42,6 +42,14 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["app", "personlogy", "personlogy_worker"]
+
+[tool.ruff.lint.per-file-ignores]
+# Chinese prompts and punctuation are intentional in these text processors.
+"**/llm_openai.py" = ["RUF001"]
+"**/compilation/heuristic.py" = ["RUF001"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

@@ -9,7 +9,6 @@ from typing import Any, cast
 from uuid import UUID
 
 from gel import errors as gel_errors
-
 from personlogy.domain.audit.models import AuditEvent
 from personlogy.ports.audit import AuditSink, ChainVerification
 from personlogy.shared.errors import DomainValidationError

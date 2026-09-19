@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from personlogy.shared.errors import DomainValidationError, InvalidStateTransitionError
 
 from app.application.errors import ApplicationError
+from personlogy.shared.errors import DomainValidationError, InvalidStateTransitionError
 
 
 async def application_error_handler(_: Request, error: Exception) -> JSONResponse:

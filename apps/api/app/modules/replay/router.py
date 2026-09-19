@@ -1,8 +1,6 @@
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from personlogy.application.replay import ReplayService
-from personlogy.domain.replay import ReplayComparison, ReplayPlan, ReplayVersionSet
 
 from app.modules.replay.schemas import (
     ReplayApprovalResponse,
@@ -14,6 +12,8 @@ from app.modules.replay.schemas import (
     ReplayVersionResponse,
 )
 from app.runtime import replay_service
+from personlogy.application.replay import ReplayService
+from personlogy.domain.replay import ReplayComparison, ReplayPlan, ReplayVersionSet
 
 router = APIRouter(prefix="/replay", tags=["replay"])
 

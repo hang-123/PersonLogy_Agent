@@ -6,8 +6,12 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+
+from app.main import create_app
+from app.modules.writebacks import router as writeback_router
 from personlogy.adapters.local_files import LocalFileStorage
 from personlogy.adapters.sqlite import SQLiteStore, SQLiteUnitOfWorkFactory
+from personlogy.adapters.sqlite_audit import SQLiteRecordStore
 from personlogy.adapters.sqlite_lineage import SQLiteLineageStore
 from personlogy.application.writeback import LocalWritebackAuthorizer, WritebackService
 from personlogy.domain.governance.models import (
@@ -22,9 +26,6 @@ from personlogy.domain.knowledge.models import Citation, Claim, KnowledgeNode, V
 from personlogy.domain.source.models import ContentBlock, Project, Source, SourceKind, SourceVersion
 from personlogy.domain.writeback.models import CandidateRef, WritebackRecord, WritebackStatus
 from personlogy.shared.trace import TraceContext
-
-from app.main import create_app
-from app.modules.writebacks import router as writeback_router
 
 
 def test_create_writeback_returns_accepted_record(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -140,6 +141,7 @@ async def _test_writeback_publishes_idempotently_and_completes_effects(
         LocalFileStorage(tmp_path / "files"),
         authorizer=LocalWritebackAuthorizer(environment="test"),
         lineage_store=lineage_store,
+        audit_sink=SQLiteRecordStore(tmp_path / "personlogy.sqlite3"),
     )
     context = TraceContext.root(actor_type="user", actor_id="operator-1")
     with context.activate():

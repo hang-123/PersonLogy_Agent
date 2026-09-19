@@ -1,11 +1,11 @@
 from fastapi import APIRouter, status
-from personlogy.application.ingestion import IncomingConversationMessage
 
 from app.modules.conversations.schemas import (
     ConversationImportRequest,
     ConversationImportResponse,
 )
 from app.runtime import conversation_import_service
+from personlogy.application.ingestion import IncomingConversationMessage
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 

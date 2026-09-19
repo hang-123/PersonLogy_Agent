@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -55,9 +56,7 @@ class CompilationService:
         self._governance_evaluator = governance_evaluator or GovernanceEvaluator()
         self._lineage_store = lineage_store
 
-    async def submit_for_version(
-        self, *, project_id: UUID, source_version_id: UUID
-    ) -> Job:
+    async def submit_for_version(self, *, project_id: UUID, source_version_id: UUID) -> Job:
         return await self._job_service.submit(
             kind="knowledge.compile",
             idempotency_key=f"knowledge-compile:{source_version_id}",
@@ -80,7 +79,9 @@ class CompilationService:
         if not blocks:
             raise DomainValidationError("source version has no content blocks")
 
-        bundle = self._compiler.compile(project_id=project_id, blocks=blocks)
+        bundle = await asyncio.to_thread(
+            self._compiler.compile, project_id=project_id, blocks=blocks
+        )
         self._validate_bundle(bundle, project_id, blocks)
         evaluation = self._governance_evaluator.evaluate(
             project_id=project_id,
@@ -289,6 +290,20 @@ class CompilationService:
             raise DomainValidationError("compiler returned no candidate knowledge")
         if any(citation.content_block_id not in block_ids for citation in bundle.citations):
             raise DomainValidationError("compiler returned citation for unknown content block")
+        block_by_id = {block.id: block for block in blocks}
+        for citation in bundle.citations:
+            content = block_by_id[citation.content_block_id].content
+            if not citation.quote.strip() or citation.quote not in content:
+                raise DomainValidationError("compiler returned quote not found in source block")
+            start = citation.metadata.get("quote_start")
+            end = citation.metadata.get("quote_end")
+            if (start is not None or end is not None) and (
+                not isinstance(start, int)
+                or not isinstance(end, int)
+                or not 0 <= start < end <= len(content)
+                or content[start:end] != citation.quote
+            ):
+                raise DomainValidationError("compiler returned invalid quote offsets")
         if any(node.project_id != project_id for node in bundle.nodes):
             raise DomainValidationError("compiler returned node for another project")
         if any(
@@ -310,9 +325,7 @@ class CompilationService:
             raise DomainValidationError("compiler returned relation with invalid provenance")
 
 
-def _with_metadata(
-    bundle: CompilationBundle, metadata: Mapping[str, object]
-) -> CompilationBundle:
+def _with_metadata(bundle: CompilationBundle, metadata: Mapping[str, object]) -> CompilationBundle:
     nodes = tuple(
         replace(node, properties={**node.properties, "compilation": metadata})
         for node in bundle.nodes
@@ -347,9 +360,7 @@ def _with_metadata(
     )
 
 
-def _apply_governance(
-    bundle: CompilationBundle, status: GovernanceRunStatus
-) -> CompilationBundle:
+def _apply_governance(bundle: CompilationBundle, status: GovernanceRunStatus) -> CompilationBundle:
     candidate_status = (
         VerificationStatus.REJECTED
         if status is GovernanceRunStatus.REJECTED
@@ -380,6 +391,4 @@ def _payload_uuid(job: Job, key: str) -> UUID:
     try:
         return UUID(value)
     except ValueError as error:
-        raise DomainValidationError(
-            f"compilation job payload field is invalid: {key}"
-        ) from error
+        raise DomainValidationError(f"compilation job payload field is invalid: {key}") from error

@@ -1,0 +1,33 @@
+{
+  "description": "Capture selected Codex user prompts for PersonLogy.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"F:/300_studyspace/300_学习空间/PersonLogy_Agent/plugins/personlogy-hook/scripts/capture.py\"",
+            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"F:\\300_studyspace\\300_学习空间\\PersonLogy_Agent\\plugins\\personlogy-hook\\scripts\\run_windows.ps1\" capture.py",
+            "timeout": 3,
+            "statusMessage": "Saving PersonLogy capture"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"F:/300_studyspace/300_学习空间/PersonLogy_Agent/plugins/personlogy-hook/scripts/sender.py\" --once",
+            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"F:\\300_studyspace\\300_学习空间\\PersonLogy_Agent\\plugins\\personlogy-hook\\scripts\\run_windows.ps1\" sender.py --once",
+            "async": true,
+            "timeout": 30,
+            "statusMessage": "Draining PersonLogy outbox"
+          }
+        ]
+      }
+    ]
+  }
+}

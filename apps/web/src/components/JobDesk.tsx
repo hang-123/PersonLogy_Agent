@@ -19,7 +19,7 @@ const statusLabels: Record<JobStatus, string> = {
 interface JobDeskProps {
   refreshToken: number;
   selectedJobId?: string;
-  jobIds: string[];
+  projectId?: string;
   onGoReview: () => void;
 }
 
@@ -38,7 +38,7 @@ function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString("zh-CN") : "—";
 }
 
-export function JobDesk({ refreshToken, selectedJobId, jobIds, onGoReview }: JobDeskProps) {
+export function JobDesk({ refreshToken, selectedJobId, projectId, onGoReview }: JobDeskProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [activeId, setActiveId] = useState(selectedJobId);
   const [loading, setLoading] = useState(true);
@@ -51,17 +51,16 @@ export function JobDesk({ refreshToken, selectedJobId, jobIds, onGoReview }: Job
   const loadJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await api.listJobs();
-      const relevant = jobIds.length ? result.filter((job) => jobIds.includes(job.id)) : result;
-      setJobs(relevant.length ? relevant : result);
-      setActiveId((current) => current && (relevant.length ? relevant : result).some((job) => job.id === current) ? current : (relevant.length ? relevant : result)[0]?.id);
+      const result = projectId ? await api.listJobs(100, projectId) : [];
+      setJobs(result);
+      setActiveId((current) => current && result.some((job) => job.id === current) ? current : result[0]?.id);
       setNotice(undefined);
     } catch (error: unknown) {
       setNotice(errorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [jobIds]);
+  }, [projectId]);
 
   useEffect(() => {
     void loadJobs();
@@ -92,7 +91,7 @@ export function JobDesk({ refreshToken, selectedJobId, jobIds, onGoReview }: Job
         <div>
           <Text className="section-kicker">OBSERVATORY / ASYNC JOBS</Text>
           <Title id="jobs-title" level={2}>任务进度</Title>
-          <Paragraph>服务器状态是唯一真相；页面只轮询、展示和导航。</Paragraph>
+          <Paragraph>查看当前项目的解析、知识编译和索引任务。</Paragraph>
         </div>
         <Button onClick={() => void loadJobs()} loading={loading}>刷新任务</Button>
       </div>

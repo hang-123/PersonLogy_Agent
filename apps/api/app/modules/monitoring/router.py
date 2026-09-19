@@ -1,7 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse
-from personlogy.adapters.telemetry import PrometheusMetricsExporter
-from personlogy.application.monitoring import MetricsView, MonitoringHealth, MonitoringService
 
 from app.modules.monitoring.schemas import (
     MetricSnapshotResponse,
@@ -10,6 +8,8 @@ from app.modules.monitoring.schemas import (
     ProjectionFailureResponse,
 )
 from app.runtime import monitoring_service
+from personlogy.adapters.telemetry import PrometheusMetricsExporter
+from personlogy.application.monitoring import MetricsView, MonitoringHealth, MonitoringService
 
 router = APIRouter(tags=["monitoring"])
 

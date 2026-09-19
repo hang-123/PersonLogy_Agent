@@ -100,11 +100,18 @@ class Job:
         return replace(
             self,
             status=JobStatus.RETRYING if can_retry else JobStatus.FAILED,
+            progress=0 if can_retry else self.progress,
             stage="waiting_to_retry" if can_retry else "failed",
             failure_reason=reason,
             next_attempt_at=timestamp + retry_delay if can_retry else None,
             finished_at=None if can_retry else timestamp,
         )
+
+    def is_timed_out(self, now: datetime | None = None) -> bool:
+        if self.status is not JobStatus.RUNNING or self.started_at is None:
+            return False
+        timestamp = now or datetime.now(UTC)
+        return timestamp >= self.started_at + timedelta(seconds=self.timeout_seconds)
 
     def cancel(self, now: datetime | None = None) -> "Job":
         if self.status in TERMINAL_JOB_STATUSES:

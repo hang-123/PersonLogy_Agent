@@ -156,9 +156,10 @@ export function App() {
           />
         ) : view === "jobs" ? (
           <JobDesk
+            key={project.projectId ?? "none"}
             refreshToken={refreshToken}
             selectedJobId={selectedJobId}
-            jobIds={jobIds}
+            projectId={project.projectId}
             onGoReview={() => setView("review")}
           />
         ) : view === "search" ? (
@@ -166,7 +167,7 @@ export function App() {
         ) : view === "answer" ? (
           <AnswerDesk project={project} />
         ) : view === "review" ? (
-          <ReviewDesk refreshToken={refreshToken} />
+          <ReviewDesk key={project.projectId ?? "none"} projectId={project.projectId} refreshToken={refreshToken} />
         ) : (
           <section className="desk-section pending-desk" aria-labelledby="pending-title">
             <Text className="section-kicker">NEXT CONTRACT</Text>

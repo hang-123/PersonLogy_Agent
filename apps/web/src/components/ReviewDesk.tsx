@@ -26,6 +26,7 @@ const filterOptions: Array<{ value: TaskFilter; label: string }> = Object.entrie
 );
 
 interface ReviewDeskProps {
+  projectId?: string;
   refreshToken: number;
 }
 
@@ -44,7 +45,7 @@ function pretty(value: Record<string, unknown>): string {
   return JSON.stringify(value, null, 2);
 }
 
-export function ReviewDesk({ refreshToken }: ReviewDeskProps) {
+export function ReviewDesk({ refreshToken, projectId }: ReviewDeskProps) {
   const [filter, setFilter] = useState<TaskFilter>("pending");
   const [tasks, setTasks] = useState<ReviewTask[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
@@ -66,7 +67,7 @@ export function ReviewDesk({ refreshToken }: ReviewDeskProps) {
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await api.listReviewTasks();
+      const result = projectId ? await api.listReviewTasks(100, projectId) : [];
       setTasks(result);
       setSelectedId((current) => current && result.some((task) => task.id === current) ? current : result.find((task) => task.status === filter)?.id);
       setNotice(undefined);
@@ -75,7 +76,7 @@ export function ReviewDesk({ refreshToken }: ReviewDeskProps) {
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, projectId]);
 
   useEffect(() => {
     void loadTasks();

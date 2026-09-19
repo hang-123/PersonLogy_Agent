@@ -5,18 +5,18 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
-def test_retrieval_search_endpoint_returns_project_scoped_shape() -> None:
+def test_retrieval_search_explicitly_rejects_unsupported_backend() -> None:
     client = TestClient(create_app())
     response = client.get(
         "/v1/retrieval/search",
         params={"project_id": str(uuid4()), "q": "简洁方案"},
     )
 
-    assert response.status_code == 200
-    assert response.json()["hits"] == []
+    assert response.status_code == 422
+    assert "unavailable" in response.text
 
 
-def test_retrieval_index_endpoint_submits_idempotent_job() -> None:
+def test_retrieval_index_rejects_unsupported_backend_before_queueing() -> None:
     client = TestClient(create_app())
     project_id = uuid4()
     response = client.post(
@@ -25,26 +25,19 @@ def test_retrieval_index_endpoint_submits_idempotent_job() -> None:
         headers={"X-Idempotency-Key": "retrieval-index-test-1"},
     )
 
-    assert response.status_code == 202
-    body = response.json()
-    assert body["project_id"] == str(project_id)
-    assert body["status"] == "queued"
-    assert body["progress"] == 0
+    assert response.status_code == 422
+    assert "unavailable" in response.text
 
 
-def test_retrieval_answer_endpoint_returns_grounded_empty_state() -> None:
+def test_retrieval_answer_explicitly_rejects_unsupported_backend() -> None:
     client = TestClient(create_app())
     response = client.post(
         "/v1/retrieval/answer",
         json={"project_id": str(uuid4()), "question": "哪些结论有来源支持?"},
     )
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["mode"] == "retrieval-grounded"
-    assert body["hit_count"] == 0
-    assert body["citations"] == []
-    assert body["uncertainty"]
+    assert response.status_code == 422
+    assert "unavailable" in response.text
 
 
 def test_source_and_evidence_detail_endpoints_return_not_found_for_unknown_ids() -> None:

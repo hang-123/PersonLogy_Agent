@@ -9,6 +9,7 @@ def test_liveness_reports_service() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert response.json()["dependencies"]["gel"] == "not_configured"
+    assert response.json()["dependencies"]["retrieval"] == "unsupported"
 
 
 def test_readiness_accepts_local_persistence_without_gel() -> None:

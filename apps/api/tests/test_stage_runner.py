@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+
 from personlogy.adapters.sqlite_audit import SQLiteRecordStore
 from personlogy.application.orchestration import (
     JOB_STAGE_COVERAGE,

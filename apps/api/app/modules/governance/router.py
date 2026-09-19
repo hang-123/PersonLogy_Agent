@@ -1,11 +1,11 @@
 from uuid import UUID
 
 from fastapi import APIRouter, status
-from personlogy.domain.governance.models import ReviewTask, ReviewTaskStatus
 
 from app.application.errors import ResourceNotFoundError
 from app.modules.governance.schemas import ReviewDecisionRequest, ReviewTaskResponse
 from app.runtime import governance_service
+from personlogy.domain.governance.models import ReviewTask, ReviewTaskStatus
 
 router = APIRouter(prefix="/review-tasks", tags=["governance"])
 
@@ -28,8 +28,12 @@ def to_response(task: ReviewTask) -> ReviewTaskResponse:
 
 
 @router.get("", response_model=list[ReviewTaskResponse])
-async def list_review_tasks(limit: int = 100) -> list[ReviewTaskResponse]:
-    tasks = await governance_service.list_review_tasks(limit=min(limit, 100))
+async def list_review_tasks(
+    limit: int = 100, project_id: UUID | None = None
+) -> list[ReviewTaskResponse]:
+    tasks = await governance_service.list_review_tasks(
+        limit=min(limit, 100), project_id=project_id
+    )
     return [to_response(task) for task in tasks]
 
 

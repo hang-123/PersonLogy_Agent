@@ -1,10 +1,10 @@
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
-from personlogy.application.lineage import LineageService, LineageTrace
 
 from app.modules.lineage.schemas import LineageLinkResponse, LineageTraceResponse
 from app.runtime import lineage_service
+from personlogy.application.lineage import LineageService, LineageTrace
 
 router = APIRouter(prefix="/lineage", tags=["lineage"])
 

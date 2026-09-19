@@ -16,5 +16,12 @@ dist/
 .DS_Store
 .vscode/
 .idea/
+.logs/
+.tmp/
+*.pyc
+__pycache__/
 data/
 !data/.gitkeep
+.mypy_cache/
+.pytest-tmp*/
+pytest-cache-files-*/

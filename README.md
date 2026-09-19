@@ -65,3 +65,52 @@ Schema：LLM 生成 Gel Migration → 校验/审批 → Migration Tool 执行
 - 原始资料不可变，索引必须可重建；
 - Schema Migration、知识写入和索引构建分别审计。
 
+## 本地启动（一键脚本）
+
+Windows / PowerShell（在仓库根目录）：
+
+```powershell
+.\start.ps1              # 启动全部服务（API + Worker + Web，后台运行）
+.\start.ps1 -Service api # 只启动某个服务
+.\start.ps1 -Status      # 查看服务状态
+.\start.ps1 -Stop        # 停止全部
+.\start.ps1 -Foreground  # 前台运行（调试用）
+```
+
+- 服务日志写入 `.logs\`（api.log / worker.log / web.log）
+- 启动前需：`.venv` 已装依赖、`apps/web` 已 `npm install`、可选复制 `.env.example` 为 `.env`
+- 访问：API 文档 `http://127.0.0.1:8000/docs`，前端 `http://localhost:5173`
+- Docker 部署见 `compose.yaml`
+
+## 系统优化与开发环境验收（2026-09-06）
+
+API 和两个 Worker 入口共用 `personlogy.runtime`：相同的配置、模型、审计、血缘和任务处理。
+`personlogy_worker.main` 与 `app.worker` 均保留为兼容入口；Compose 的 API/Worker 均加载 `.env`。
+
+- 任务重试时进度归零。每次执行受 `timeout_seconds` 限制，Worker 每轮领取前恢复已超时的运行任务；API 启动时也执行恢复。恢复遵守重试次数与等待时间。
+- LLM 引文须逐字来自内容块，记录 `quote_start` / `quote_end` 字符偏移（左闭右开）；关系拥有独立引用。启发式引用保留原始空白，不向引文添加省略号。
+- 任务和审核列表支持 `project_id`，前端自动传递选中项目。此参数是数据筛选，不替代访问控制。
+- `/v1/health/live` 与 `/v1/health/ready` 的 `dependencies` 包含 `retrieval` / `indexing` 能力；Gel 和内存后端的检索、问答及索引请求返回明确错误。
+- Gel 迁移默认校验证书，密码通过标准输入传递；只有本机自签名开发环境才使用 `-AllowInsecureLocal`。首次集成测试应加 `-Seed` 初始化关系字典。
+
+在 `apps/api` 下运行后端检查：
+
+```powershell
+../../.venv/Scripts/python.exe -m pytest tests
+../../.venv/Scripts/python.exe -m ruff check app tests ../../packages/personlogy_core/src ../worker/src --config pyproject.toml
+../../.venv/Scripts/python.exe -m mypy app ../../packages/personlogy_core/src ../worker/src
+```
+
+在项目根目录运行真实 API/Worker 全流程测试；每次使用独立 `.tmp` 数据目录，结束后停止测试进程：
+
+```powershell
+.venv/Scripts/python.exe tests/live_development_smoke.py                 # 启发式，无外部模型调用
+.venv/Scripts/python.exe tests/live_development_smoke.py --external-llm  # 使用 .env 的模型配置
+docker build -t personlogy-optimization-api -f apps/api/Dockerfile .
+docker build -t personlogy-optimization-worker -f apps/worker/Dockerfile .
+.venv/Scripts/python.exe tests/container_smoke.py
+```
+
+真实模型测试仅发送脚本生成的合成资料。脚本会初始化测试所需 Schema 快照；正常开发库需先登记目标 Schema 快照，审核和回写才可形成闭环。
+完整结果、Gel 测试命令及范围说明见 [系统优化验收报告](docs/engineering/system-optimization-validation-2026-09-06.md)。
+

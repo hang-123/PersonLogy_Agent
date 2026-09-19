@@ -32,9 +32,11 @@ class GovernanceService:
         self._audit_sink = audit_sink
         self._lineage_store = lineage_store
 
-    async def list_review_tasks(self, *, limit: int = 100) -> list[ReviewTask]:
+    async def list_review_tasks(
+        self, *, limit: int = 100, project_id: UUID | None = None
+    ) -> list[ReviewTask]:
         async with self._uow_factory() as uow:
-            return await uow.governance.list_review_tasks(limit=limit)
+            return await uow.governance.list_review_tasks(limit=limit, project_id=project_id)
 
     async def get_review_task(self, task_id: UUID) -> ReviewTask | None:
         async with self._uow_factory() as uow:

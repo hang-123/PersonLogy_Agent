@@ -98,9 +98,7 @@ class InMemorySourceRepository:
             raise DomainValidationError("conversation id already exists")
         self._store.conversations[conversation.id] = conversation
 
-    async def get_conversation(
-        self, project_id: UUID, external_id: str
-    ) -> Conversation | None:
+    async def get_conversation(self, project_id: UUID, external_id: str) -> Conversation | None:
         return next(
             (
                 item
@@ -138,9 +136,7 @@ class InMemorySourceRepository:
             raise DomainValidationError("source project does not exist")
         self._store.sources[source.id] = source
 
-    async def get_source(
-        self, project_id: UUID, kind: SourceKind, title: str
-    ) -> Source | None:
+    async def get_source(self, project_id: UUID, kind: SourceKind, title: str) -> Source | None:
         return next(
             (
                 item
@@ -322,9 +318,19 @@ class InMemoryGovernanceRepository:
             raise DomainValidationError("review task does not exist")
         self._store.review_tasks[task.id] = task
 
-    async def list_review_tasks(self, *, limit: int = 100) -> list[ReviewTask]:
+    async def list_review_tasks(
+        self, *, limit: int = 100, project_id: UUID | None = None
+    ) -> list[ReviewTask]:
         tasks = sorted(
-            self._store.review_tasks.values(),
+            (
+                task
+                for task in self._store.review_tasks.values()
+                if project_id is None
+                or (
+                    task.run_id in self._store.governance_runs
+                    and self._store.governance_runs[task.run_id].project_id == project_id
+                )
+            ),
             key=lambda item: item.created_at,
             reverse=True,
         )
@@ -406,8 +412,20 @@ class InMemoryJobRepository:
             None,
         )
 
-    async def list(self, *, limit: int = 100) -> list[Job]:
+    async def list(
+        self,
+        *,
+        limit: int | None = 100,
+        project_id: UUID | None = None,
+        status: str | None = None,
+    ) -> list[Job]:
         jobs = sorted(self._store.jobs.values(), key=lambda item: item.created_at, reverse=True)
+        jobs = [
+            job
+            for job in jobs
+            if (project_id is None or str(job.payload.get("project_id")) == str(project_id))
+            and (status is None or job.status.value == status)
+        ]
         return jobs[:limit]
 
 

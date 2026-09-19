@@ -1,0 +1,3 @@
+"""Local PersonLogy Hook implementation."""
+
+__version__ = "0.1.0"

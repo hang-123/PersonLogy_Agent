@@ -1,8 +1,6 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Header, status
-from personlogy.domain.governance.models import CandidateKind
-from personlogy.domain.writeback.models import CandidateRef, WritebackItem, WritebackRecord
 
 from app.application.errors import ResourceNotFoundError
 from app.modules.writebacks.schemas import (
@@ -11,6 +9,8 @@ from app.modules.writebacks.schemas import (
     WritebackResponse,
 )
 from app.runtime import writeback_service
+from personlogy.domain.governance.models import CandidateKind
+from personlogy.domain.writeback.models import CandidateRef, WritebackItem, WritebackRecord
 
 router = APIRouter(prefix="/writebacks", tags=["writeback"])
 

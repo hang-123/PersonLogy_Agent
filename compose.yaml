@@ -36,6 +36,9 @@ services:
       - ./data:/workspace/data
 
   worker:
+    env_file:
+      - path: .env
+        required: false
     build:
       context: .
       dockerfile: apps/worker/Dockerfile

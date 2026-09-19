@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+
 from personlogy.adapters.sqlite import SQLiteStore
 from personlogy.adapters.sqlite_features import SQLiteFeatureStore, SQLiteSchemaRegistry
 from personlogy.application.schema_management import SchemaChangeService, diff_schema

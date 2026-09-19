@@ -1,0 +1,10 @@
+{
+  "session_id": "session-test-1",
+  "turn_id": "turn-test-1",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "我明年可能想读研，但现在还是先准备秋招。",
+  "cwd": "F:/workspace/example",
+  "transcript_path": null,
+  "model": "test-model",
+  "permission_mode": "default"
+}

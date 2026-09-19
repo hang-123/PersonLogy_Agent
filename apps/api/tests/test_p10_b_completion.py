@@ -5,6 +5,7 @@ from typing import cast
 from uuid import uuid4
 
 import pytest
+
 from personlogy.adapters.sqlite import SQLiteStore, SQLiteUnitOfWorkFactory
 from personlogy.adapters.sqlite_audit import SQLiteRecordStore
 from personlogy.adapters.sqlite_features import (

@@ -87,11 +87,11 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  listJobs: (limit = 100) => request<Job[]>("/jobs?limit=" + limit),
+  listJobs: (limit = 100, projectId?: string) => request<Job[]>("/jobs?limit=" + limit + (projectId ? "&project_id=" + encodeURIComponent(projectId) : "")),
 
   getJob: (jobId: string) => request<Job>("/jobs/" + encodeURIComponent(jobId)),
 
-  listReviewTasks: (limit = 100) => request<ReviewTask[]>("/review-tasks?limit=" + limit),
+  listReviewTasks: (limit = 100, projectId?: string) => request<ReviewTask[]>("/review-tasks?limit=" + limit + (projectId ? "&project_id=" + encodeURIComponent(projectId) : "")),
 
   getReviewTask: (taskId: string) =>
     request<ReviewTask>("/review-tasks/" + encodeURIComponent(taskId)),

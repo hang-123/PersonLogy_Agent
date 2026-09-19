@@ -2,8 +2,9 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from personlogy.domain.job import JobStatus
 from pydantic import BaseModel, Field
+
+from personlogy.domain.job import JobStatus
 
 
 class JobCreateRequest(BaseModel):

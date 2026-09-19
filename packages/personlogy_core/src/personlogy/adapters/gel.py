@@ -27,7 +27,6 @@ from uuid import UUID
 
 import gel
 from gel import errors as gel_errors
-
 from personlogy.domain.governance.models import (
     CandidateKind,
     ConflictRecord,
@@ -206,9 +205,7 @@ class GelSourceRepository:
         except gel_errors.EdgeDBError as error:
             raise _constraint_error(error, "source project does not exist") from error
 
-    async def get_source(
-        self, project_id: UUID, kind: SourceKind, title: str
-    ) -> Source | None:
+    async def get_source(self, project_id: UUID, kind: SourceKind, title: str) -> Source | None:
         row = await self._tx.query_single(
             """
             select Source { id, kind, title, created_at, project: { id } }
@@ -259,9 +256,7 @@ class GelSourceRepository:
                 error, "conversation project/source does not exist or id already exists"
             ) from error
 
-    async def get_conversation(
-        self, project_id: UUID, external_id: str
-    ) -> Conversation | None:
+    async def get_conversation(self, project_id: UUID, external_id: str) -> Conversation | None:
         row = await self._tx.query_single(
             """
             select Conversation {
@@ -312,9 +307,7 @@ class GelSourceRepository:
                 content_hash=message.content_hash,
                 created_at=message.created_at,
                 parent_external_id=message.parent_external_id,
-                attachments=json.dumps(
-                    list(message.attachments), ensure_ascii=False, default=str
-                ),
+                attachments=json.dumps(list(message.attachments), ensure_ascii=False, default=str),
             )
         except gel_errors.EdgeDBError as error:
             raise _constraint_error(
@@ -1064,17 +1057,23 @@ class GelGovernanceRepository:
         if not rows:
             raise DomainValidationError("review task does not exist")
 
-    async def list_review_tasks(self, *, limit: int = 100) -> list[ReviewTask]:
+    async def list_review_tasks(
+        self, *, limit: int = 100, project_id: UUID | None = None
+    ) -> list[ReviewTask]:
+        project_filter = " filter .run.project.id = <uuid>$project_id" if project_id else ""
+        params: dict[str, Any] = {"limit": limit}
+        if project_id is not None:
+            params["project_id"] = project_id
         rows = await self._tx.query(
-            """
-            select ReviewTask {
+            f"""
+            select ReviewTask {{
               id, candidate_id, candidate_kind, status, reviewer_id, reason,
-              before, after, version, created_at, reviewed_at, run: { id },
-            }
-            order by .created_at desc
+              before, after, version, created_at, reviewed_at, run: {{ id }},
+            }}
+            {project_filter} order by .created_at desc
             limit <int64>$limit
             """,
-            limit=limit,
+            **params,
         )
         return [
             ReviewTask(
@@ -1398,14 +1397,25 @@ class GelJobRepository:
         )
         return self._from_row(row) if row is not None else None
 
-    async def list(self, *, limit: int = 100) -> list[Job]:
+    async def list(
+        self,
+        *,
+        limit: int | None = 100,
+        project_id: UUID | None = None,
+        status: str | None = None,
+    ) -> list[Job]:
         rows = await self._tx.query(
             (
                 "select Job "
                 f"{GelJobRepository._JOB_SHAPE}"
-                " order by .created_at desc limit <int64>$limit"
+                " filter (<str>$project_id = '' or "
+                "(<str>json_get(.payload, 'project_id') ?? '') = <str>$project_id)"
+                " and (<str>$status = '' or <str>.status = <str>$status)"
+                " order by .created_at desc limit <optional int64>$limit"
             ),
             limit=limit,
+            project_id=str(project_id) if project_id else "",
+            status=status or "",
         )
         return [self._from_row(row) for row in rows]
 
