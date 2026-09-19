@@ -4,6 +4,9 @@ from personlogy.runtime.services import (
     audit_sink as audit_sink,
 )
 from personlogy.runtime.services import (
+    capture_ingestion_service as capture_ingestion_service,
+)
+from personlogy.runtime.services import (
     compilation_service as compilation_service,
 )
 from personlogy.runtime.services import (

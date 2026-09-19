@@ -9,9 +9,17 @@ from personlogy.adapters.llm_openai import (
     OpenAICompatReranker,
 )
 from personlogy.adapters.local_files import LocalFileStorage
-from personlogy.adapters.memory import InMemoryJobQueue, InMemoryStore, InMemoryUnitOfWorkFactory
+from personlogy.adapters.memory import (
+    InMemoryJobQueue,
+    InMemoryStore,
+    InMemoryUnitOfWorkFactory,
+)
 from personlogy.adapters.pdf import PdfPlumberParser
-from personlogy.adapters.sqlite import SQLiteJobQueue, SQLiteStore, SQLiteUnitOfWorkFactory
+from personlogy.adapters.sqlite import (
+    SQLiteJobQueue,
+    SQLiteStore,
+    SQLiteUnitOfWorkFactory,
+)
 from personlogy.adapters.sqlite_audit import SQLiteRecordStore
 from personlogy.adapters.sqlite_features import (
     SQLiteFeatureStore,
@@ -22,7 +30,11 @@ from personlogy.adapters.sqlite_features import (
 from personlogy.adapters.sqlite_lineage import SQLiteLineageStore
 from personlogy.adapters.sqlite_metrics import SQLiteMetricsStore
 from personlogy.adapters.sqlite_replay import SQLiteReplayStore
-from personlogy.application.compilation import CompilationService, DocumentHeuristicCompiler
+from personlogy.application.capture import CaptureIngestionService
+from personlogy.application.compilation import (
+    CompilationService,
+    DocumentHeuristicCompiler,
+)
 from personlogy.application.governance import GovernanceService
 from personlogy.application.ingestion import ConversationImportService, PdfImportService
 from personlogy.application.lineage import LineageService
@@ -71,7 +83,7 @@ elif settings.storage_backend == "gel":
     if not settings.gel_dsn:
         raise RuntimeError("PKS_GEL_DSN is required when storage_backend is gel")
     gel_store = GelStore(settings.gel_dsn)
-    uow_factory = GelUnitOfWorkFactory(gel_store)
+    uow_factory = cast(UnitOfWorkFactory, GelUnitOfWorkFactory(gel_store))
 else:  # pragma: no cover - guarded by Settings Literal
     raise RuntimeError(f"unsupported storage_backend: {settings.storage_backend}")
 
@@ -102,6 +114,11 @@ elif gel_store is not None:
 job_service = JobService(uow_factory, queue, audit_sink=audit_sink)
 stage_runner = StageRunner(audit_sink)
 conversation_import_service = ConversationImportService(uow_factory, job_service)
+capture_ingestion_service = CaptureIngestionService(
+    uow_factory,
+    project_slug=settings.capture_project_slug,
+    project_name=settings.capture_project_name,
+)
 pdf_import_service = PdfImportService(
     uow_factory,
     job_service,

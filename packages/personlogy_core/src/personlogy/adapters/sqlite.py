@@ -12,6 +12,12 @@ from types import TracebackType
 from typing import Self, cast
 from uuid import UUID
 
+from personlogy.domain.capture.models import (
+    CaptureConflict,
+    CapturedEvent,
+    CaptureSourceIdentity,
+    StreamState,
+)
 from personlogy.domain.governance.models import (
     CandidateKind,
     ConflictRecord,
@@ -43,6 +49,7 @@ from personlogy.domain.writeback.models import (
     WritebackRecord,
     WritebackStatus,
 )
+from personlogy.ports.capture import CaptureRepository
 from personlogy.ports.queue import JobQueue
 from personlogy.ports.repositories import (
     GovernanceRepository,
@@ -273,6 +280,52 @@ CREATE TABLE IF NOT EXISTS job (
 );
 CREATE INDEX IF NOT EXISTS job_ready_idx
     ON job(status, next_attempt_at, created_at);
+CREATE TABLE IF NOT EXISTS capture_inbox_event (
+    event_id TEXT PRIMARY KEY,
+    producer_id TEXT NOT NULL,
+    stream_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_scope TEXT NOT NULL,
+    session_key TEXT NOT NULL,
+    source_item_key TEXT NOT NULL,
+    source_revision INTEGER NOT NULL,
+    occurred_at TEXT,
+    captured_at TEXT NOT NULL,
+    rule_version TEXT NOT NULL,
+    schema_version INTEGER NOT NULL,
+    payload_hash TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(source_kind, source_scope, session_key, source_item_key, source_revision),
+    UNIQUE(producer_id, stream_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS capture_inbox_event_stream_idx
+    ON capture_inbox_event(producer_id, stream_id, sequence);
+CREATE TABLE IF NOT EXISTS capture_inbox_conflict (
+    id TEXT PRIMARY KEY,
+    source_kind TEXT NOT NULL,
+    source_scope TEXT NOT NULL,
+    session_key TEXT NOT NULL,
+    source_item_key TEXT NOT NULL,
+    source_revision INTEGER NOT NULL,
+    existing_event_id TEXT NOT NULL,
+    existing_payload_hash TEXT NOT NULL,
+    incoming_event_id TEXT NOT NULL,
+    incoming_payload_hash TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(source_kind, source_scope, session_key, source_item_key, source_revision,
+           existing_event_id, incoming_event_id, reason)
+);
+CREATE TABLE IF NOT EXISTS capture_stream_state (
+    producer_id TEXT NOT NULL,
+    stream_id TEXT NOT NULL,
+    next_sequence INTEGER NOT NULL DEFAULT 1,
+    last_contiguous_received_sequence INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(producer_id, stream_id)
+);
 """
 
 
@@ -371,6 +424,7 @@ class SQLiteStore:
 
     def __init__(self, path: str | Path) -> None:
         self.path = str(path)
+        self._write_lock = asyncio.Lock()
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         connection = self.connect()
@@ -1333,8 +1387,155 @@ class SQLiteJobRepository:
         )
 
 
+class SQLiteCaptureRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    async def get_by_event_id(self, event_id: UUID) -> CapturedEvent | None:
+        row = self._connection.execute(
+            "SELECT * FROM capture_inbox_event WHERE event_id = ?", (_id(event_id),)
+        ).fetchone()
+        return _captured_event_from_row(row) if row is not None else None
+
+    async def get_by_source_identity(
+        self, identity: CaptureSourceIdentity
+    ) -> CapturedEvent | None:
+        row = self._connection.execute(
+            """SELECT * FROM capture_inbox_event
+               WHERE source_kind = ? AND source_scope = ? AND session_key = ?
+                 AND source_item_key = ? AND source_revision = ?""",
+            _source_identity_values(identity),
+        ).fetchone()
+        return _captured_event_from_row(row) if row is not None else None
+
+    async def get_by_stream_sequence(
+        self, producer_id: str, stream_id: str, sequence: int
+    ) -> CapturedEvent | None:
+        row = self._connection.execute(
+            """SELECT * FROM capture_inbox_event
+               WHERE producer_id = ? AND stream_id = ? AND sequence = ?""",
+            (producer_id, stream_id, sequence),
+        ).fetchone()
+        return _captured_event_from_row(row) if row is not None else None
+
+    async def add_event(self, event: CapturedEvent) -> None:
+        try:
+            self._connection.execute(
+                """INSERT INTO capture_inbox_event (
+                    event_id, producer_id, stream_id, sequence,
+                    source_kind, source_scope, session_key, source_item_key,
+                    source_revision, occurred_at, captured_at, rule_version,
+                    schema_version, payload_hash, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    _id(event.event_id),
+                    event.producer_id,
+                    event.stream_id,
+                    event.sequence,
+                    *_source_identity_values(event.source_identity),
+                    _timestamp(event.occurred_at) if event.occurred_at else None,
+                    _timestamp(event.captured_at),
+                    event.rule_version,
+                    event.schema_version,
+                    event.payload_hash.lower(),
+                    _json(dict(event.payload)),
+                    _timestamp(event.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise DomainValidationError("capture event identity already exists") from error
+
+    async def add_conflict(self, conflict: CaptureConflict) -> None:
+        self._connection.execute(
+            """INSERT OR IGNORE INTO capture_inbox_conflict (
+                id, source_kind, source_scope, session_key, source_item_key,
+                source_revision, existing_event_id, existing_payload_hash,
+                incoming_event_id, incoming_payload_hash, reason, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                _id(conflict.id),
+                *_source_identity_values(conflict.source_identity),
+                _id(conflict.existing_event_id),
+                conflict.existing_payload_hash,
+                _id(conflict.incoming_event_id),
+                conflict.incoming_payload_hash,
+                conflict.reason,
+                _timestamp(conflict.created_at),
+            ),
+        )
+
+    async def get_stream_state(self, producer_id: str, stream_id: str) -> StreamState | None:
+        row = self._connection.execute(
+            """SELECT * FROM capture_stream_state
+               WHERE producer_id = ? AND stream_id = ?""",
+            (producer_id, stream_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return StreamState(
+            producer_id=row["producer_id"],
+            stream_id=row["stream_id"],
+            next_sequence=row["next_sequence"],
+            last_contiguous_received_sequence=row["last_contiguous_received_sequence"],
+            updated_at=_required_datetime(row["updated_at"]),
+        )
+
+    async def save_stream_state(self, state: StreamState) -> None:
+        self._connection.execute(
+            """INSERT INTO capture_stream_state (
+                producer_id, stream_id, next_sequence,
+                last_contiguous_received_sequence, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(producer_id, stream_id) DO UPDATE SET
+                next_sequence = excluded.next_sequence,
+                last_contiguous_received_sequence = excluded.last_contiguous_received_sequence,
+                updated_at = excluded.updated_at""",
+            (
+                state.producer_id,
+                state.stream_id,
+                state.next_sequence,
+                state.last_contiguous_received_sequence,
+                _timestamp(state.updated_at),
+            ),
+        )
+
+
+def _source_identity_values(identity: CaptureSourceIdentity) -> tuple[object, ...]:
+    return (
+        identity.source_kind,
+        identity.source_scope,
+        identity.session_key,
+        identity.source_item_key,
+        identity.source_revision,
+    )
+
+
+def _captured_event_from_row(row: sqlite3.Row) -> CapturedEvent:
+    return CapturedEvent(
+        schema_version=row["schema_version"],
+        event_id=UUID(row["event_id"]),
+        producer_id=row["producer_id"],
+        stream_id=row["stream_id"],
+        sequence=row["sequence"],
+        source_identity=CaptureSourceIdentity(
+            source_kind=row["source_kind"],
+            source_scope=row["source_scope"],
+            session_key=row["session_key"],
+            source_item_key=row["source_item_key"],
+            source_revision=row["source_revision"],
+        ),
+        occurred_at=_datetime(row["occurred_at"]),
+        captured_at=_required_datetime(row["captured_at"]),
+        rule_version=row["rule_version"],
+        payload_hash=row["payload_hash"],
+        payload=_mapping(row["payload_json"]),
+        created_at=_required_datetime(row["created_at"]),
+    )
+
+
 class SQLiteUnitOfWork:
     def __init__(self, store: SQLiteStore) -> None:
+        self._store = store
         self._connection = store.connect()
         self._connection.execute("BEGIN")
         self.sources: SourceRepository = SQLiteSourceRepository(self._connection)
@@ -1342,9 +1543,11 @@ class SQLiteUnitOfWork:
         self.governance: GovernanceRepository = SQLiteGovernanceRepository(self._connection)
         self.writebacks: WritebackRepository = SQLiteWritebackRepository(self._connection)
         self.jobs: JobRepository = SQLiteJobRepository(self._connection)
+        self.capture: CaptureRepository = SQLiteCaptureRepository(self._connection)
         self._committed = False
 
     async def __aenter__(self) -> Self:
+        await self._store._write_lock.acquire()
         return self
 
     async def __aexit__(
@@ -1356,6 +1559,7 @@ class SQLiteUnitOfWork:
         if exc_type is not None or not self._committed:
             await self.rollback()
         self._connection.close()
+        self._store._write_lock.release()
 
     async def commit(self) -> None:
         self._connection.commit()
@@ -1410,6 +1614,7 @@ class SQLiteJobQueue(JobQueue):
 
 
 __all__ = [
+    "SQLiteCaptureRepository",
     "SQLiteJobQueue",
     "SQLiteStore",
     "SQLiteUnitOfWork",

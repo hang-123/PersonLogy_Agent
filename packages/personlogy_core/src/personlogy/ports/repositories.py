@@ -19,6 +19,15 @@ from personlogy.domain.source.models import (
     SourceKind,
     SourceVersion,
 )
+from personlogy.ports.capture import CaptureRepository
+
+__all__ = [
+    "CaptureRepository",
+    "GovernanceRepository",
+    "JobRepository",
+    "KnowledgeRepository",
+    "SourceRepository",
+]
 
 
 class SourceRepository(Protocol):

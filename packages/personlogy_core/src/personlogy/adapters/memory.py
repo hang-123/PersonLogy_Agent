@@ -4,6 +4,12 @@ from types import TracebackType
 from typing import Self
 from uuid import UUID
 
+from personlogy.domain.capture.models import (
+    CaptureConflict,
+    CapturedEvent,
+    CaptureSourceIdentity,
+    StreamState,
+)
 from personlogy.domain.governance.models import (
     ConflictRecord,
     DuplicateGroup,
@@ -47,6 +53,9 @@ class InMemoryStore:
     messages: dict[UUID, ConversationMessage] = field(default_factory=dict)
     writeback_records: dict[UUID, WritebackRecord] = field(default_factory=dict)
     writeback_items: dict[UUID, WritebackItem] = field(default_factory=dict)
+    capture_events: dict[UUID, CapturedEvent] = field(default_factory=dict)
+    capture_conflicts: dict[UUID, CaptureConflict] = field(default_factory=dict)
+    capture_stream_states: dict[tuple[str, str], StreamState] = field(default_factory=dict)
 
     def clone(self) -> "InMemoryStore":
         return InMemoryStore(
@@ -69,6 +78,9 @@ class InMemoryStore:
             messages=self.messages.copy(),
             writeback_records=self.writeback_records.copy(),
             writeback_items=self.writeback_items.copy(),
+            capture_events=self.capture_events.copy(),
+            capture_conflicts=self.capture_conflicts.copy(),
+            capture_stream_states=self.capture_stream_states.copy(),
         )
 
 
@@ -429,6 +441,58 @@ class InMemoryJobRepository:
         return jobs[:limit]
 
 
+class InMemoryCaptureRepository:
+    def __init__(self, store: InMemoryStore) -> None:
+        self._store = store
+
+    async def get_by_event_id(self, event_id: UUID) -> CapturedEvent | None:
+        return self._store.capture_events.get(event_id)
+
+    async def get_by_source_identity(
+        self, identity: CaptureSourceIdentity
+    ) -> CapturedEvent | None:
+        return next(
+            (
+                event
+                for event in self._store.capture_events.values()
+                if event.source_identity == identity
+            ),
+            None,
+        )
+
+    async def get_by_stream_sequence(
+        self, producer_id: str, stream_id: str, sequence: int
+    ) -> CapturedEvent | None:
+        return next(
+            (
+                event
+                for event in self._store.capture_events.values()
+                if event.producer_id == producer_id
+                and event.stream_id == stream_id
+                and event.sequence == sequence
+            ),
+            None,
+        )
+
+    async def add_event(self, event: CapturedEvent) -> None:
+        if await self.get_by_event_id(event.event_id) is not None:
+            raise DomainValidationError("capture event id already exists")
+        if await self.get_by_source_identity(event.source_identity) is not None:
+            raise DomainValidationError("capture source identity already exists")
+        if await self.get_by_stream_sequence(event.producer_id, event.stream_id, event.sequence):
+            raise DomainValidationError("capture stream sequence already exists")
+        self._store.capture_events[event.event_id] = event
+
+    async def add_conflict(self, conflict: CaptureConflict) -> None:
+        self._store.capture_conflicts[conflict.id] = conflict
+
+    async def get_stream_state(self, producer_id: str, stream_id: str) -> StreamState | None:
+        return self._store.capture_stream_states.get((producer_id, stream_id))
+
+    async def save_stream_state(self, state: StreamState) -> None:
+        self._store.capture_stream_states[(state.producer_id, state.stream_id)] = state
+
+
 class InMemoryUnitOfWork:
     def __init__(self, store: InMemoryStore) -> None:
         self._root_store = store
@@ -438,6 +502,7 @@ class InMemoryUnitOfWork:
         self.governance = InMemoryGovernanceRepository(self._working_store)
         self.writebacks = InMemoryWritebackRepository(self._working_store)
         self.jobs = InMemoryJobRepository(self._working_store)
+        self.capture = InMemoryCaptureRepository(self._working_store)
         self._committed = False
 
     async def __aenter__(self) -> Self:

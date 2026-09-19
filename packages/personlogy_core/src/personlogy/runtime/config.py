@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field
+from pydantic import AliasChoices, AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,18 @@ class Settings(BaseSettings):
     pdf_max_size_bytes: int = 25 * 1024 * 1024
     queue_backend: Literal["memory", "sqlite", "gel"] = "sqlite"
     queue_poll_interval_seconds: float = 2.0
+    capture_project_slug: str = Field(
+        default="personal",
+        validation_alias=AliasChoices(
+            "PERSONLOGY_CAPTURE_PROJECT_SLUG", "PKS_CAPTURE_PROJECT_SLUG"
+        ),
+    )
+    capture_project_name: str = Field(
+        default="个人数字分身",
+        validation_alias=AliasChoices(
+            "PERSONLOGY_CAPTURE_PROJECT_NAME", "PKS_CAPTURE_PROJECT_NAME"
+        ),
+    )
     metrics_projector_batch_size: int = 500
     queue_backlog_degraded_threshold: int = 100
     index_stale_after_seconds: float = 3600
