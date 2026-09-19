@@ -8,8 +8,13 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from typing import Any
 
 from personlogy_hook.core import claim_due, mark_delivery
+
+_RECEIVED_STATUSES = frozenset({"accepted", "already_received"})
+_BLOCKED_STATUSES = frozenset({"conflict", "rejected"})
+_RETRYABLE_STATUSES = frozenset({"retryable"})
 
 
 def endpoint() -> str:
@@ -17,6 +22,48 @@ def endpoint() -> str:
         "PERSONLOGY_ENDPOINT",
         "http://127.0.0.1:8000/v1/capture/events",
     )
+
+
+def parse_response(body: str, event_id: str) -> tuple[str, str | None, str | None]:
+    """Map one server event result to the local delivery state.
+
+    The API response is per-event because a batch can contain both accepted and
+    conflicting events. A malformed or incomplete response is retryable: marking
+    it received would lose the event when the server committed but the response
+    was truncated.
+    """
+    try:
+        parsed: Any = json.loads(body) if body.strip() else {}
+        if not isinstance(parsed, dict):
+            raise TypeError("response body must be a JSON object")
+        results = parsed.get("results")
+        if not isinstance(results, list):
+            raise TypeError("response does not contain a results array")
+        result = next(
+            (item for item in results if isinstance(item, dict) and item.get("event_id") == event_id),
+            None,
+        )
+        if result is None:
+            raise ValueError(f"response does not contain event {event_id}")
+        status = result.get("status")
+        if status in _RECEIVED_STATUSES:
+            receipt = result.get("server_receipt_id") or parsed.get("receipt_id")
+            return "received", receipt if isinstance(receipt, str) else None, None
+        if status in _BLOCKED_STATUSES:
+            return (
+                "blocked",
+                None,
+                str(result.get("error_summary") or result.get("error_code") or status),
+            )
+        if status in _RETRYABLE_STATUSES:
+            return (
+                "retry_wait",
+                None,
+                str(result.get("error_summary") or result.get("error_code") or status),
+            )
+        raise ValueError(f"unknown event result status: {status!r}")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        return "retry_wait", None, f"invalid_response: {str(exc)[:240]}"
 
 
 def post_event(row) -> tuple[str, str | None, str | None]:
@@ -63,9 +110,7 @@ def post_event(row) -> tuple[str, str | None, str | None]:
             timeout=float(os.environ.get("PERSONLOGY_HTTP_TIMEOUT", "10")),
         ) as response:
             response_body = response.read().decode("utf-8", errors="replace")
-            parsed = json.loads(response_body) if response_body.strip() else {}
-            receipt = parsed.get("receipt_id") or parsed.get("server_receipt_id")
-            return "received", receipt, None
+            return parse_response(response_body, str(row["event_id"]))
     except urllib.error.HTTPError as exc:
         detail = exc.read(512).decode("utf-8", errors="replace")
         if exc.code == 429 or exc.code >= 500:

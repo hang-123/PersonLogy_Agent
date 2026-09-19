@@ -9,7 +9,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from personlogy_hook.core import build_candidate, enqueue, load_rules
-from sender import run_once
+from sender import parse_response, run_once
 
 
 def test_candidate_contains_stable_identity(monkeypatch, tmp_path):
@@ -99,3 +99,46 @@ def test_sender_persists_server_receipt(monkeypatch, tmp_path):
         assert connection.execute(
             "select status, server_receipt_id from deliveries"
         ).fetchone() == ("received", "receipt-1")
+
+
+def test_sender_maps_already_received_to_received() -> None:
+    status, receipt, error = parse_response(
+        '{"results":[{"event_id":"event-1","status":"already_received",'
+        '"server_receipt_id":"receipt-1"}]}',
+        "event-1",
+    )
+    assert (status, receipt, error) == ("received", "receipt-1", None)
+
+
+def test_sender_maps_conflict_to_blocked() -> None:
+    status, receipt, error = parse_response(
+        '{"results":[{"event_id":"event-1","status":"conflict",'
+        '"error_code":"source_conflict"}]}',
+        "event-1",
+    )
+    assert status == "blocked"
+    assert receipt is None
+    assert error == "source_conflict"
+
+
+def test_sender_maps_retryable_to_retry_wait() -> None:
+    status, receipt, error = parse_response(
+        '{"results":[{"event_id":"event-1","status":"retryable",'
+        '"error_summary":"database unavailable"}]}',
+        "event-1",
+    )
+    assert (status, receipt, error) == ("retry_wait", None, "database unavailable")
+
+
+def test_sender_retries_incomplete_response() -> None:
+    status, receipt, error = parse_response("{}", "event-1")
+    assert status == "retry_wait"
+    assert receipt is None
+    assert error is not None and error.startswith("invalid_response:")
+
+
+def test_sender_retries_non_object_response() -> None:
+    status, receipt, error = parse_response("[]", "event-1")
+    assert status == "retry_wait"
+    assert receipt is None
+    assert error is not None and error.startswith("invalid_response:")

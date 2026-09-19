@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.person-knowledge.dev/schemas/capture-event-response.v1.json",
+  "title": "PersonLogy Capture Event Batch Response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["receipt_id", "results"],
+  "properties": {
+    "receipt_id": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/result" }
+    }
+  },
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "status"],
+      "properties": {
+        "event_id": { "type": "string", "format": "uuid" },
+        "status": {
+          "enum": ["accepted", "already_received", "conflict", "rejected", "retryable"]
+        },
+        "server_receipt_id": { "type": ["string", "null"], "maxLength": 255 },
+        "error_code": { "type": ["string", "null"], "maxLength": 100 },
+        "error_summary": { "type": ["string", "null"], "maxLength": 500 }
+      }
+    }
+  }
+}
